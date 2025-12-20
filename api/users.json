@@ -1,12 +1,12 @@
 [
   {
     "email": "admin@demo.com",
-    "password": "Test123",
+    "password": "Test@123",
     "name": "Admin User"
   },
   {
     "email": "guest@demo.com",
-    "password": "Test123",
+    "password": "Test@123",
     "name": "Guest User"
   }
 ]
