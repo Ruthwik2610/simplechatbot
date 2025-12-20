@@ -202,7 +202,7 @@ class LoginForm1 {
         }, 500);
     }
     
-    async submitForm() {
+async submitForm() {
         this.isSubmitting = true;
         this.submitBtn.classList.add('loading');
         
@@ -210,11 +210,29 @@ class LoginForm1 {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             
-            // Use shared login simulation
-            await FormUtils.simulateLogin(email, password);
-            
-            // Show success state
-            this.showSuccessMessage();
+            // --- NEW: Call Vercel Backend ---
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Login Success!
+                // Save user info (without password) to browser for the chat page to use
+                localStorage.setItem('currentUser', JSON.stringify(data.user));
+                
+                this.showSuccessMessage();
+                
+                setTimeout(() => {
+                    window.location.href = 'chat.html'; 
+                }, 1500);
+            } else {
+                throw new Error(data.error || 'Login failed');
+            }
+            // --------------------------------
             
         } catch (error) {
             console.error('Login error:', error);
