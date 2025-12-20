@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant - Glassmorphism</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="chat.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="newChatBtn">
+                    <i class="fas fa-plus"></i> <span>New Chat</span>
+                </button>
+            </div>
+
+            <div class="search-wrapper">
+                <i class="fas fa-search"></i>
+                <input type="text" placeholder="Search history...">
+            </div>
+
+            <div class="history-list custom-scroll" id="historyList">
+                </div>
+
+            <div class="user-profile">
+                <div class="avatar online">
+                    <img src="https://ui-avatars.com/api/?name=You&background=6366f1&color=fff" alt="User">
+                </div>
+                <div class="user-info">
+                    <h3>My Account</h3>
+                    <span class="status-text">Free Plan</span>
+                </div>
+                <button class="icon-btn logout-btn" title="Settings">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </aside>
+
+        <main class="chat-area glass-panel">
+            <header class="chat-header">
+                <div class="model-selector">
+                    <div class="model-badge">
+                        <i class="fas fa-sparkles"></i> Glass AI 4.0
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" title="Export Chat"><i class="fas fa-download"></i></button>
+                    <button class="icon-btn" id="clearChatBtn" title="Clear Chat"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            </header>
+
+            <div class="messages-container custom-scroll" id="messagesArea">
+                <div class="empty-state" id="emptyState">
+                    <div class="logo-wrapper">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h2>How can I help you today?</h2>
+                    
+                    <div class="suggestion-grid">
+                        <div class="suggestion-card" onclick="usePrompt('Explain quantum computing in simple terms')">
+                            <i class="fas fa-atom"></i>
+                            <p>Explain quantum computing</p>
+                        </div>
+                        <div class="suggestion-card" onclick="usePrompt('Write a Python script to scrape a website')">
+                            <i class="fas fa-code"></i>
+                            <p>Write a Python script</p>
+                        </div>
+                        <div class="suggestion-card" onclick="usePrompt('Draft a cold email for a job application')">
+                            <i class="fas fa-envelope"></i>
+                            <p>Draft a cold email</p>
+                        </div>
+                        <div class="suggestion-card" onclick="usePrompt('Give me ideas for a healthy dinner')">
+                            <i class="fas fa-utensils"></i>
+                            <p>Dinner ideas</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <button class="icon-btn attachment-btn"><i class="fas fa-paperclip"></i></button>
+                <div class="message-input-wrapper">
+                    <textarea id="messageInput" placeholder="Message AI..." rows="1"></textarea>
+                </div>
+                <button class="send-btn" id="sendBtn">
+                    <i class="fas fa-arrow-up"></i>
+                </button>
+            </div>
+            <div class="disclaimer">
+                AI can make mistakes. Please verify important information.
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    
+    <script src="chat.js"></script>
+</body>
+</html>
