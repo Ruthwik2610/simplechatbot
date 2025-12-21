@@ -402,19 +402,11 @@ body {
     .sidebar { display: none; } /* Simplified mobile hide */
     .sidebar.open { display: flex; position: absolute; z-index: 10; height: 100%; box-shadow: 4px 0 15px rgba(0,0,0,0.1); }
 }
-/* ... [Keep all previous CSS from the Claude Theme] ... */
-
-/* --- ADD THIS TO THE BOTTOM OF CHAT.CSS --- */
-
-/* File Preview Styles */
-.file-preview-area {
+ .file-preview-area {
+    padding: 0 4px 8px;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 8px;
-    padding: 0 4px;
-    min-height: 0;
-    transition: all 0.2s;
 }
 
 .file-chip {
@@ -430,18 +422,20 @@ body {
     animation: fadeIn 0.3s ease;
 }
 
-.file-chip i.fa-file-alt {
+.file-chip i.fa-file-alt,
+.file-chip i.fa-file-code {
     color: var(--accent-color);
 }
 
 .file-chip .file-info {
     display: flex;
     flex-direction: column;
+    line-height: 1.2;
 }
 
 .file-chip .file-name {
     font-weight: 500;
-    max-width: 150px;
+    max-width: 200px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -455,11 +449,6 @@ body {
 .file-chip .remove-file-btn {
     color: var(--text-tertiary);
     cursor: pointer;
-    padding: 4px;
-    margin-left: 4px;
-    transition: color 0.2s;
-}
-
-.file-chip .remove-file-btn:hover {
-    color: #D32F2F; /* Error Red */
+    margin-left: 6px;
+    padding: 2px;
 }
