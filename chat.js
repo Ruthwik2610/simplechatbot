@@ -71,7 +71,8 @@ function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = (e) => reject(e);
+        // FIX 1: Reject with a clear Error object, not the event object
+        reader.onerror = () => reject(new Error("Failed to read file content")); 
         reader.readAsText(file);
     });
 }
@@ -113,10 +114,7 @@ async function handleSend() {
 
         if (currentFile) {
             try {
-                // Read the actual content
                 const fileContent = await readFileAsText(currentFile);
-                
-                // Prompt Engineering: Inject file content
                 fullContentForAI = `
 I have attached a file named "${currentFile.name}".
 Here is the content of the file:
@@ -132,7 +130,7 @@ My Question: ${text}
             }
         }
         
-        clearFile(); // Clear file selection after reading
+        clearFile(); 
 
         // 3. Send to API
         const response = await fetch('/api/chat', {
@@ -141,17 +139,43 @@ My Question: ${text}
             body: JSON.stringify({ message: fullContentForAI })
         });
 
+        // FIX 2: Check if response is JSON, otherwise read text
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+             throw new Error("Server returned non-JSON response. Check your API route.");
+        }
+
         const data = await response.json();
-        if (data.error) throw new Error(data.error);
+        
+        // FIX 3: Safe error extraction
+        if (data.error) {
+            const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+            throw new Error(errMsg);
+        }
 
         const aiText = data.choices[0].message.content;
         removeLoadingIndicator(loadingId);
         await streamResponse(aiText);
 
     } catch (error) {
-        console.error(error);
+        console.error("Chat Error:", error);
         removeLoadingIndicator(loadingId);
-        addMessageToDom('ai', `**Error:** ${error.message}`);
+        
+        // FIX 4: Final safety net to prevent [object Object]
+        let displayError = "An unknown error occurred.";
+        if (error instanceof Error) {
+            displayError = error.message;
+        } else if (typeof error === 'string') {
+            displayError = error;
+        } else {
+            try {
+                displayError = JSON.stringify(error);
+            } catch (e) {
+                displayError = "Critical error (could not stringify)";
+            }
+        }
+        
+        addMessageToDom('ai', `**Error:** ${displayError}`);
     }
     
     isGenerating = false;
