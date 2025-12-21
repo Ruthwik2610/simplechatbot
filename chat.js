@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.hljs) hljs.highlightAll();
 });
 
+// --- File Handling Logic ---
 function setupFileHandling() {
     const attachmentBtn = document.getElementById('attachmentBtn');
     const fileInput = document.getElementById('fileInput');
@@ -65,17 +66,17 @@ window.clearFile = function() {
     document.getElementById('filePreviewArea').innerHTML = '';
 }
 
-// --- NEW: Helper to read file content ---
+// Helper to read file content as text
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = (e) => reject(e);
-        // This reads the file as plain text (works for code, json, csv, txt, md)
         reader.readAsText(file);
     });
 }
 
+// --- Main Chat Logic ---
 async function handleSend() {
     if (isGenerating) return;
     
@@ -89,7 +90,7 @@ async function handleSend() {
     input.value = '';
     input.style.height = 'auto'; 
     
-    // 1. Show the user's message immediately (visual only)
+    // 1. Show User Message
     let userDisplayHtml = text;
     if (currentFile) {
         userDisplayHtml = `
@@ -103,20 +104,19 @@ async function handleSend() {
     addMessageToDom('user', userDisplayHtml);
     addToHistory(text || "File Analysis");
 
-    // 2. Prepare the ACTUAL payload for the AI
+    // 2. Prepare Payload
     isGenerating = true;
     const loadingId = addLoadingIndicator();
     
     try {
         let fullContentForAI = text;
 
-        // --- NEW: If file exists, read it and append to prompt ---
         if (currentFile) {
             try {
-                // Read file content
+                // Read the actual content
                 const fileContent = await readFileAsText(currentFile);
                 
-                // Construct a prompt that includes the file context
+                // Prompt Engineering: Inject file content
                 fullContentForAI = `
 I have attached a file named "${currentFile.name}".
 Here is the content of the file:
@@ -128,14 +128,13 @@ My Question: ${text}
 `;
             } catch (err) {
                 console.error("Error reading file:", err);
-                fullContentForAI += `\n\n[Error: Could not read file content of ${currentFile.name}]`;
+                fullContentForAI += `\n\n[Error: Could not read file content]`;
             }
         }
         
-        // Clear file state after reading
-        clearFile();
+        clearFile(); // Clear file selection after reading
 
-        // 3. Send to Backend
+        // 3. Send to API
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -158,10 +157,7 @@ My Question: ${text}
     isGenerating = false;
 }
 
-// ... [Keep helper functions: setupEventListeners, addMessageToDom, addLoadingIndicator, removeLoadingIndicator, streamResponse, addToHistory, renderHistory, scrollToBottom, autoResizeTextarea] ...
-// (Copy them from the previous file or ask me if you need the full file again)
-
-// --- RE-ADDING HELPERS FOR COMPLETENESS ---
+// --- Helpers ---
 function setupEventListeners() {
     const sendBtn = document.getElementById('sendBtn');
     const input = document.getElementById('messageInput');
@@ -209,7 +205,6 @@ function addMessageToDom(role, contentOrHtml) {
     const iconClass = role === 'user' ? 'user' : 'ai';
     const iconChar = role === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-cube"></i>';
     
-    // Check if content is likely HTML (from our file preview) or just text
     const isHtml = contentOrHtml.includes('<div') || contentOrHtml.includes('<br>');
     
     div.innerHTML = `
