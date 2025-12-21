@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Assistant</title>
+    <title>Claude Interface</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
     <link rel="stylesheet" href="chat.css">
@@ -26,14 +26,14 @@
                 </div>
 
             <div class="user-profile">
-                <div class="avatar online">
+                <div class="avatar">
                     <img src="https://ui-avatars.com/api/?name=You&background=EBEBEB&color=2D2D2D" alt="User">
                 </div>
                 <div class="user-info">
                     <h3>My Account</h3>
                     <span class="status-text">Free Plan</span>
                 </div>
-                <button class="icon-btn logout-btn" id="logoutBtn" title="Sign Out">
+                <button class="logout-btn" id="logoutBtn" title="Sign Out">
                     <i class="fas fa-sign-out-alt"></i> 
                 </button>
             </div>
@@ -41,22 +41,23 @@
 
         <main class="chat-area">
             <header class="chat-header">
-                <div class="model-selector">
-                    <div class="model-badge">
-                        <i class="fas fa-cube"></i> &nbsp; Claude 3.5 Sonnet
-                    </div>
+                <div class="model-badge">
+                    <i class="fas fa-cube"></i> Claude 3.5 Sonnet
                 </div>
                 <div class="header-actions">
-                    <button class="icon-btn mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')"><i class="fas fa-bars"></i></button>
-                    <button class="icon-btn" title="Export Chat"><i class="fas fa-download"></i></button>
-                    <button class="icon-btn" id="clearChatBtn" title="Clear Chat"><i class="fas fa-trash-alt"></i></button>
+                    <button class="icon-btn" title="Menu" onclick="document.getElementById('sidebar').classList.toggle('open')">
+                         <i class="fas fa-bars"></i>
+                    </button>
+                    <button class="icon-btn" title="Export"><i class="fas fa-download"></i></button>
+                    <button class="icon-btn" id="clearChatBtn" title="Clear"><i class="fas fa-trash-alt"></i></button>
                 </div>
             </header>
 
             <div class="messages-container custom-scroll" id="messagesArea">
                 <div class="empty-state" id="emptyState">
                     <div class="logo-wrapper">
-                        <i class="fas fa-cube"></i> </div>
+                        <i class="fas fa-cube"></i>
+                    </div>
                     <h2>How can I help you today?</h2>
                     
                     <div class="suggestion-grid">
@@ -68,11 +69,11 @@
                             <i class="fas fa-code"></i>
                             <p>Write a Python script</p>
                         </div>
-                        <div class="suggestion-card" onclick="usePrompt('Draft a professional email for a job application')">
+                        <div class="suggestion-card" onclick="usePrompt('Draft a cold email for a job application')">
                             <i class="fas fa-envelope"></i>
                             <p>Draft a cold email</p>
                         </div>
-                        <div class="suggestion-card" onclick="usePrompt('Analyze this text for grammatical errors')">
+                        <div class="suggestion-card" onclick="usePrompt('Check this text for grammar errors')">
                             <i class="fas fa-spell-check"></i>
                             <p>Check grammar</p>
                         </div>
@@ -82,7 +83,7 @@
 
             <div class="input-area">
                 <div class="message-input-wrapper">
-                    <button class="icon-btn attachment-btn"><i class="fas fa-paperclip"></i></button>
+                    <button class="attachment-btn"><i class="fas fa-paperclip"></i></button>
                     <textarea id="messageInput" placeholder="Reply to Claude..." rows="1"></textarea>
                     <button class="send-btn" id="sendBtn">
                         <i class="fas fa-arrow-up"></i>
