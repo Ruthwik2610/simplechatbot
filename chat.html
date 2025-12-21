@@ -45,7 +45,7 @@
                     <i class="fas fa-cube"></i> Claude 3.5 Sonnet
                 </div>
                 <div class="header-actions">
-                    <button class="icon-btn" title="Menu" onclick="document.getElementById('sidebar').classList.toggle('open')">
+                    <button class="icon-btn mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">
                          <i class="fas fa-bars"></i>
                     </button>
                     <button class="icon-btn" title="Export"><i class="fas fa-download"></i></button>
@@ -82,8 +82,12 @@
             </div>
 
             <div class="input-area">
+                <div id="filePreviewArea" class="file-preview-area"></div>
+
                 <div class="message-input-wrapper">
-                    <button class="attachment-btn"><i class="fas fa-paperclip"></i></button>
+                    <input type="file" id="fileInput" hidden>
+                    
+                    <button class="attachment-btn" id="attachmentBtn"><i class="fas fa-paperclip"></i></button>
                     <textarea id="messageInput" placeholder="Reply to Claude..." rows="1"></textarea>
                     <button class="send-btn" id="sendBtn">
                         <i class="fas fa-arrow-up"></i>
