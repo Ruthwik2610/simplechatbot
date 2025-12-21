@@ -74,12 +74,12 @@ body {
 }
 
 .input-wrapper input:focus + label,
-.input-wrapper input:valid + label {
-    transform: translateY(-8px) scale(0.85);
-    color: #06b6d4;
-    font-weight: 500;
+.input-wrapper input:valid + label,
+.input-wrapper input.has-value + label {
+    opacity: 0;           
+    transform: translateY(0);
+    pointer-events: none; 
 }
-
 .focus-border {
     position: absolute;
     bottom: 0;
