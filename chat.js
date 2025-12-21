@@ -1,3 +1,10 @@
+(function checkAuth() {
+    const user = localStorage.getItem('currentUser');
+    if (!user) {
+        // User is not logged in, redirect to login page
+        window.location.href = 'index.html';
+    }
+})();
 // Data: Mock History
 const chatHistory = [
     { id: 1, title: "React Component Help", date: "Today" },
@@ -49,6 +56,36 @@ function setupEventListeners() {
     const input = document.getElementById('messageInput');
     const newChatBtn = document.getElementById('newChatBtn');
     const clearChatBtn = document.getElementById('clearChatBtn');
+    const logoutBtn = document.getElementById('logoutBtn'); // Matches the ID we added in HTML
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', handleLogout);
+    }
+    // ----------------------------
+
+    sendBtn.addEventListener('click', handleSend);
+    newChatBtn.addEventListener('click', startNewChat);
+    
+    if(clearChatBtn) {
+        clearChatBtn.addEventListener('click', startNewChat);
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    });
+}
+
+// --- NEW: Logout Function ---
+function handleLogout() {
+    // 1. Remove user session data
+    localStorage.removeItem('currentUser');
+    
+    // 2. (Optional) visual feedback could go here
+    
+    // 3. Redirect to login page
+    window.location.href = 'index.html';
 
     sendBtn.addEventListener('click', handleSend);
     newChatBtn.addEventListener('click', startNewChat);
