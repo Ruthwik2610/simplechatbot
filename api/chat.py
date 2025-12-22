@@ -21,40 +21,43 @@ class handler(BaseHTTPRequestHandler):
             return
 
         # 2. Parse Request
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        
         try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
             body = json.loads(post_data.decode('utf-8'))
             user_message = body.get('message', '')
-        except Exception as e:
+        except Exception:
             self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode('utf-8'))
             return
 
         # 3. Define Agents
         # We re-initialize agents per request to keep the function stateless
         try:
+            # --- CRITICAL FIX: Use a Chat Model, NOT Llama Guard ---
+            # Llama-3.3-70b is excellent for following complex routing rules
+            model_id = "groq:llama-3.3-70b-versatile"
+
             tech_agent = Agent(
                 name="tech",
                 instructions="Debug code.",
-                model="meta-llama/llama-guard-4-12b"
+                model=model_id
             )
 
             data_agent = Agent(
                 name="data",
                 instructions="Explain data analysis concepts.",
-                model="meta-llama/llama-guard-4-12b"
+                model=model_id
             )
 
             docs_agent = Agent(
                 name="docs",
                 instructions="Write documentation and summaries.",
-                model="meta-llama/llama-guard-4-12b"
+                model=model_id
             )
 
-            # 4. Define Team with Routing Tags
-team = Team(
-                model="meta-llama/llama-guard-4-12b",
+            # 4. Define Team with ServiceNow Routing Tags
+            team = Team(
+                model=model_id,
                 instructions=[
                     "You are the Intelligent Routing Orchestrator for ServiceNow Customer Support.",
                     "Your goal is to route user queries to the specific specialist agent best suited to handle them.",
