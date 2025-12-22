@@ -31,11 +31,9 @@ class handler(BaseHTTPRequestHandler):
             return
 
         # 3. Define Agents
-        # We re-initialize agents per request to keep the function stateless
         try:
-            # --- CRITICAL FIX: Use a Chat Model, NOT Llama Guard ---
-            # Llama-3.3-70b is excellent for following complex routing rules
-            model_id = "groq:llama-3.3-70b-versatile"
+
+            model_id = "groq:llama-3.1-8b-instant"
 
             tech_agent = Agent(
                 name="tech",
