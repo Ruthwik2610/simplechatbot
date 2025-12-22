@@ -1,0 +1,4 @@
+agno
+groq
+pydantic
+langchain-groq
