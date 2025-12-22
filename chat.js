@@ -5,21 +5,25 @@
     }
 })();
 
-const chatHistory = [
-    { id: 1, title: "React Component Help", date: "Today" },
-    { id: 2, title: "Marketing Email Draft", date: "Today" }
-];
-
+// --- Global State ---
 let isGenerating = false;
 let currentFile = null;
+let isDebugMode = false; // New state for Debug Toggle
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB Limit
 
 document.addEventListener('DOMContentLoaded', () => {
-    renderHistory();
     setupEventListeners();
     setupFileHandling();
     autoResizeTextarea();
     if (window.hljs) hljs.highlightAll();
+
+    // Initialize Debug Toggle Listener
+    const debugToggle = document.getElementById('debugModeToggle');
+    if (debugToggle) {
+        debugToggle.addEventListener('change', (e) => {
+            isDebugMode = e.target.checked;
+        });
+    }
 });
 
 // --- File Handling Logic ---
@@ -27,21 +31,23 @@ function setupFileHandling() {
     const attachmentBtn = document.getElementById('attachmentBtn');
     const fileInput = document.getElementById('fileInput');
 
-    attachmentBtn.addEventListener('click', () => fileInput.click());
+    if (attachmentBtn && fileInput) {
+        attachmentBtn.addEventListener('click', () => fileInput.click());
 
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-        if (file.size > MAX_FILE_SIZE) {
-            alert(`File is too large. Maximum size is 5MB.`);
-            fileInput.value = '';
-            return;
-        }
+            if (file.size > MAX_FILE_SIZE) {
+                alert(`File is too large. Maximum size is 5MB.`);
+                fileInput.value = '';
+                return;
+            }
 
-        currentFile = file;
-        renderFilePreview(file);
-    });
+            currentFile = file;
+            renderFilePreview(file);
+        });
+    }
 }
 
 function renderFilePreview(file) {
@@ -62,16 +68,16 @@ function renderFilePreview(file) {
 
 window.clearFile = function() {
     currentFile = null;
-    document.getElementById('fileInput').value = '';
-    document.getElementById('filePreviewArea').innerHTML = '';
+    const fileInput = document.getElementById('fileInput');
+    const previewArea = document.getElementById('filePreviewArea');
+    if (fileInput) fileInput.value = '';
+    if (previewArea) previewArea.innerHTML = '';
 }
 
-// Helper to read file content as text
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
-        // FIX 1: Reject with a clear Error object, not the event object
         reader.onerror = () => reject(new Error("Failed to read file content")); 
         reader.readAsText(file);
     });
@@ -103,7 +109,6 @@ async function handleSend() {
         `;
     }
     addMessageToDom('user', userDisplayHtml);
-    addToHistory(text || "File Analysis");
 
     // 2. Prepare Payload
     isGenerating = true;
@@ -139,46 +144,115 @@ My Question: ${text}
             body: JSON.stringify({ message: fullContentForAI })
         });
 
-        // FIX 2: Check if response is JSON, otherwise read text
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-             throw new Error("Server returned non-JSON response. Check your API route.");
+             throw new Error("Server returned non-JSON response.");
         }
 
         const data = await response.json();
         
-        // FIX 3: Safe error extraction
         if (data.error) {
-            const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-            throw new Error(errMsg);
+            throw new Error(data.error);
         }
 
-        const aiText = data.choices[0].message.content;
+        let aiText = data.choices[0].message.content;
+
+        // --- ROUTING LOGIC START ---
+        // Default Identity
+        let agentIdentity = { 
+            name: "Team Orchestrator", 
+            icon: "fa-network-wired", 
+            class: "ai-default", 
+            rawTag: "None" 
+        };
+        
+        // Detect Tags
+        if (aiText.includes('[[TECH]]')) {
+            agentIdentity = { name: "Tech Agent", icon: "fa-code", class: "ai-tech", rawTag: "[[TECH]]" };
+            aiText = aiText.replace('[[TECH]]', '').trim();
+        } else if (aiText.includes('[[DATA]]')) {
+            agentIdentity = { name: "Data Analyst", icon: "fa-chart-bar", class: "ai-data", rawTag: "[[DATA]]" };
+            aiText = aiText.replace('[[DATA]]', '').trim();
+        } else if (aiText.includes('[[DOCS]]')) {
+            agentIdentity = { name: "Docs Writer", icon: "fa-book", class: "ai-docs", rawTag: "[[DOCS]]" };
+            aiText = aiText.replace('[[DOCS]]', '').trim();
+        } else if (aiText.includes('[[TEAM]]')) {
+             // Keeps default orchestrator identity
+             aiText = aiText.replace('[[TEAM]]', '').trim();
+             agentIdentity.rawTag = "[[TEAM]]";
+        }
+        // --- ROUTING LOGIC END ---
+
         removeLoadingIndicator(loadingId);
-        await streamResponse(aiText);
+        
+        // 4. Render Response with Agent Badge
+        await streamResponseWithAgent(aiText, agentIdentity);
 
     } catch (error) {
         console.error("Chat Error:", error);
         removeLoadingIndicator(loadingId);
         
-        // FIX 4: Final safety net to prevent [object Object]
-        let displayError = "An unknown error occurred.";
-        if (error instanceof Error) {
-            displayError = error.message;
-        } else if (typeof error === 'string') {
-            displayError = error;
-        } else {
-            try {
-                displayError = JSON.stringify(error);
-            } catch (e) {
-                displayError = "Critical error (could not stringify)";
-            }
-        }
-        
+        let displayError = error.message || "An unknown error occurred.";
         addMessageToDom('ai', `**Error:** ${displayError}`);
     }
     
     isGenerating = false;
+}
+
+// --- Enhanced Renderer ---
+async function streamResponseWithAgent(fullText, agentInfo) {
+    const container = document.getElementById('messagesArea');
+    const div = document.createElement('div');
+    div.className = 'message-wrapper';
+    
+    // 1. Create Badge HTML
+    const badgeHtml = `
+        <div class="agent-badge ${agentInfo.class}">
+            <i class="fas ${agentInfo.icon}"></i> ${agentInfo.name}
+        </div>
+    `;
+
+    // 2. Create Debug HTML (only if enabled)
+    let debugHtml = '';
+    if (isDebugMode) {
+        debugHtml = `
+            <div class="debug-box">
+                <div class="debug-header"><i class="fas fa-terminal"></i> Routing Debugger</div>
+                <div class="debug-row"><span>Raw Tag:</span> <code>${agentInfo.rawTag}</code></div>
+                <div class="debug-row"><span>Route Target:</span> <strong>${agentInfo.name}</strong></div>
+                <div class="debug-row"><span>Status:</span> <span style="color:#22c55e">Active</span></div>
+            </div>
+        `;
+    }
+
+    div.innerHTML = `
+        <div class="role-icon ai"><i class="fas fa-robot"></i></div>
+        <div class="message-content">
+            ${debugHtml}
+            ${badgeHtml}
+            <div class="markdown-body"></div>
+        </div>
+    `;
+    container.appendChild(div);
+    
+    const contentArea = div.querySelector('.markdown-body');
+    let currentText = "";
+    const chars = fullText.split('');
+    
+    // Stream characters
+    for (let char of chars) {
+        currentText += char;
+        contentArea.innerHTML = marked.parse(currentText);
+        
+        // Syntax Highlighting
+        contentArea.querySelectorAll('pre code').forEach((block) => {
+            if (window.hljs) hljs.highlightElement(block);
+        });
+        
+        scrollToBottom();
+        // Dynamic typing speed
+        await new Promise(r => setTimeout(r, 5)); 
+    }
 }
 
 // --- Helpers ---
@@ -194,31 +268,42 @@ function setupEventListeners() {
         window.location.href = 'index.html';
     });
 
-    sendBtn.addEventListener('click', handleSend);
-    newChatBtn.addEventListener('click', startNewChat);
-    if(clearChatBtn) clearChatBtn.addEventListener('click', startNewChat);
+    if (sendBtn) sendBtn.addEventListener('click', handleSend);
+    
+    if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
+    if (clearChatBtn) clearChatBtn.addEventListener('click', startNewChat);
 
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    });
+    if (input) {
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+        });
+    }
 }
 
 window.usePrompt = function(text) {
     const input = document.getElementById('messageInput');
-    input.value = text;
-    handleSend();
+    if (input) {
+        input.value = text;
+        handleSend();
+    }
 }
 
 function startNewChat() {
     const container = document.getElementById('messagesArea');
     const emptyState = document.getElementById('emptyState');
-    container.querySelectorAll('.message-wrapper').forEach(msg => msg.remove());
+    
+    // Remove all message wrappers except empty state
+    const messages = container.querySelectorAll('.message-wrapper');
+    messages.forEach(msg => msg.remove());
+    
     emptyState.style.display = 'flex';
     clearFile();
-    document.getElementById('messageInput').focus();
+    
+    const input = document.getElementById('messageInput');
+    if (input) input.focus();
 }
 
 function addMessageToDom(role, contentOrHtml) {
@@ -227,7 +312,7 @@ function addMessageToDom(role, contentOrHtml) {
     div.className = 'message-wrapper';
     
     const iconClass = role === 'user' ? 'user' : 'ai';
-    const iconChar = role === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-cube"></i>';
+    const iconChar = role === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-robot"></i>';
     
     const isHtml = contentOrHtml.includes('<div') || contentOrHtml.includes('<br>');
     
@@ -249,9 +334,10 @@ function addLoadingIndicator() {
     div.className = 'message-wrapper loading-msg';
     div.id = 'loading-' + Date.now();
     div.innerHTML = `
-        <div class="role-icon ai"><i class="fas fa-cube"></i></div>
+        <div class="role-icon ai"><i class="fas fa-robot"></i></div>
         <div class="message-content">
             <div class="typing-dot" style="display:inline-block; width:8px; height:8px; background:#DA7756; border-radius:50%; animation: pulse 1s infinite;"></div>
+            <span style="font-size:13px; color:#666; margin-left:8px;">Consulting team...</span>
         </div>
     `;
     container.appendChild(div);
@@ -264,41 +350,19 @@ function removeLoadingIndicator(id) {
     if (el) el.remove();
 }
 
-async function streamResponse(fullText) {
+function scrollToBottom() {
     const container = document.getElementById('messagesArea');
-    const div = document.createElement('div');
-    div.className = 'message-wrapper';
-    div.innerHTML = `
-        <div class="role-icon ai"><i class="fas fa-cube"></i></div>
-        <div class="message-content"></div>
-    `;
-    container.appendChild(div);
-    
-    const contentArea = div.querySelector('.message-content');
-    let currentText = "";
-    const chars = fullText.split('');
-    
-    for (let char of chars) {
-        currentText += char;
-        contentArea.innerHTML = marked.parse(currentText);
-        contentArea.querySelectorAll('pre code').forEach((block) => {
-            hljs.highlightElement(block);
-        });
-        scrollToBottom();
-        await new Promise(r => setTimeout(r, Math.random() * 20 + 10)); 
+    if (container) {
+        container.scrollTop = container.scrollHeight;
     }
 }
 
-function addToHistory(title) { /* Mock implementation */ }
-function renderHistory() { /* Mock implementation */ }
-function scrollToBottom() {
-    const container = document.getElementById('messagesArea');
-    container.scrollTop = container.scrollHeight;
-}
 function autoResizeTextarea() {
     const tx = document.getElementById('messageInput');
-    tx.addEventListener("input", function() {
-        this.style.height = 'auto';
-        this.style.height = (this.scrollHeight) + 'px';
-    });
+    if (tx) {
+        tx.addEventListener("input", function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    }
 }
