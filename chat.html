@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Support</title>
+    <title>Multi-Agent Chat</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
     <link rel="stylesheet" href="chat.css">
@@ -18,64 +18,57 @@
             </div>
             <div class="search-wrapper">
                 <i class="fas fa-search"></i>
-                <input type="text" placeholder="Search chats...">
+                <input type="text" placeholder="Search...">
             </div>
             <div class="history-list custom-scroll" id="historyList"></div>
             <div class="user-profile">
                 <div class="avatar">
-                    <img src="https://ui-avatars.com/api/?name=You&background=EBEBEB&color=2D2D2D" alt="User">
+                    <img src="https://ui-avatars.com/api/?name=User&background=EBEBEB&color=2D2D2D" alt="User">
                 </div>
                 <div class="user-info">
                     <h3>My Account</h3>
-                    <span class="status-text">Free Plan</span>
                 </div>
-                <button class="logout-btn" id="logoutBtn" title="Sign Out">
-                    <i class="fas fa-sign-out-alt"></i> 
-                </button>
+                <button class="logout-btn" id="logoutBtn"><i class="fas fa-sign-out-alt"></i></button>
             </div>
         </aside>
 
         <main class="chat-area">
             <header class="chat-header">
                 <div class="model-badge">
-                    <i class="fas fa-cube"></i> Multi-Agent Team
+                    <i class="fas fa-network-wired"></i> Multi-Agent Team
                 </div>
-                
                 <div class="header-actions">
-                    <div class="debug-toggle-wrapper" title="Toggle Routing Debug Mode">
-                        <span class="debug-label">Debug Mode</span>
+                    <div class="debug-toggle-wrapper">
+                        <span class="debug-label">Debug</span>
                         <label class="switch">
                             <input type="checkbox" id="debugModeToggle">
                             <span class="slider round"></span>
                         </label>
                     </div>
-
-                    <button class="icon-btn mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">
-                         <i class="fas fa-bars"></i>
-                    </button>
-                    <button class="icon-btn" id="clearChatBtn" title="Clear"><i class="fas fa-trash-alt"></i></button>
+                    <button class="icon-btn mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')"><i class="fas fa-bars"></i></button>
                 </div>
             </header>
 
             <div class="messages-container custom-scroll" id="messagesArea">
                 <div class="empty-state" id="emptyState">
                     <div class="logo-wrapper">
-                        <i class="fas fa-network-wired"></i>
+                        <i class="fas fa-robot"></i>
                     </div>
-                    <h2>How can the team help you?</h2>
+                    <h2>How can the team help?</h2>
+                    <p style="color:#666; margin-bottom:20px;">The AI will automatically select the best expert for your task.</p>
                     
                     <div class="suggestion-grid">
-                        <div class="suggestion-card" onclick="usePrompt('Fix this Python loop code')">
-                            <i class="fas fa-bug"></i>
-                            <p>Fix Code (Tech Agent)</p>
+                        <div class="suggestion-card" onclick="usePrompt('My python loop is stuck infinite. How do I fix it?')">
+                            <i class="fas fa-bug" style="color:#DA7756"></i>
+                            <p>Debug Broken Code</p>
                         </div>
-                        <div class="suggestion-card" onclick="usePrompt('Analyze this dataset trend')">
-                            <i class="fas fa-chart-line"></i>
-                            <p>Analyze Data (Data Agent)</p>
+                        <div class="suggestion-card" onclick="usePrompt('Analyze the trend in this sales data.')">
+                            <i class="fas fa-chart-line" style="color:#2E7D32"></i>
+                            <p>Analyze Data Trends</p>
                         </div>
-                        <div class="suggestion-card" onclick="usePrompt('Write documentation for my API')">
-                            <i class="fas fa-file-alt"></i>
-                            <p>Write Docs (Docs Agent)</p>
+                        <div class="suggestion-card" onclick="usePrompt('Generate a README.md for a React app.')">
+                            <i class="fas fa-file-alt" style="color:#F57C00"></i>
+                            <p>Write Documentation</p>
                         </div>
                     </div>
                 </div>
@@ -86,13 +79,8 @@
                 <div class="message-input-wrapper">
                     <input type="file" id="fileInput" hidden>
                     <button class="attachment-btn" id="attachmentBtn"><i class="fas fa-paperclip"></i></button>
-                    <textarea id="messageInput" placeholder="Ask the team..." rows="1"></textarea>
-                    <button class="send-btn" id="sendBtn">
-                        <i class="fas fa-arrow-up"></i>
-                    </button>
-                </div>
-                <div class="disclaimer">
-                    AI agents can make mistakes. Please verify important information.
+                    <textarea id="messageInput" placeholder="Ask anything... (e.g., 'Fix my code')" rows="1"></textarea>
+                    <button class="send-btn" id="sendBtn"><i class="fas fa-arrow-up"></i></button>
                 </div>
             </div>
         </main>
@@ -100,6 +88,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    
     <script src="chat.js"></script>
 </body>
 </html>
