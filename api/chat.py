@@ -53,16 +53,33 @@ class handler(BaseHTTPRequestHandler):
             )
 
             # 4. Define Team with Routing Tags
-            team = Team(
+team = Team(
                 model="groq:openai/gpt-oss-20b",
                 instructions=[
-                    "Choose the best agent and let them answer.",
-                    "IMPORTANT: You must start your response with a tag identifying the agent used.",
-                    "Use [[TECH]] for the tech/debugging agent.",
-                    "Use [[DATA]] for the data analysis agent.",
-                    "Use [[DOCS]] for the documentation agent.",
-                    "If you answer directly, use [[TEAM]].",
-                    "Example: '[[TECH]] Here is the fix for your code...'"
+                    "You are the Intelligent Routing Orchestrator for ServiceNow Customer Support.",
+                    "Your goal is to route user queries to the specific specialist agent best suited to handle them.",
+                    
+                    "CRITICAL OUTPUT RULE: You MUST start your response with exactly one of the following tags. Do not write any text before the tag.",
+                    
+                    "1. Use [[TECH]] for technical implementation and debugging.",
+                    "   - Context: GlideRecord scripting, Business Rules, Client Scripts, API errors, Flow Designer issues, or instance performance debugging.",
+                    
+                    "2. Use [[DATA]] for analytics and reporting.",
+                    "   - Context: Performance Analytics (PA), Report creation, Dashboard configuration, table statistics, or trend analysis.",
+                    
+                    "3. Use [[DOCS]] for content generation and explanation.",
+                    "   - Context: Writing Knowledge Base (KB) articles, summarizing Release Notes, explaining Standard Operating Procedures (SOPs), or drafting email templates.",
+                    
+                    "4. Use [[TEAM]] for general queries.",
+                    "   - Context: Greetings (e.g., 'Hello'), general questions about the team, or if the request doesn't fit the categories above.",
+
+                    "RESPONSE FORMAT:",
+                    "[[TAG]] <Your response content>",
+                    
+                    "EXAMPLES:",
+                    "- User: 'My Business Rule isn't running on update.' -> Response: '[[TECH]] Let's look at your condition and script...'",
+                    "- User: 'Create a report for open incidents by assignment group.' -> Response: '[[DATA]] I can explain how to configure that report...'",
+                    "- User: 'Draft a KB article for password reset.' -> Response: '[[DOCS]] Here is a draft structure for the article...'"
                 ],
                 members=[tech_agent, data_agent, docs_agent]
             )
