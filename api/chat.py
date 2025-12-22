@@ -37,24 +37,24 @@ class handler(BaseHTTPRequestHandler):
             tech_agent = Agent(
                 name="tech",
                 instructions="Debug code.",
-                model="groq/compound-mini"
+                model="meta-llama/llama-guard-4-12b"
             )
 
             data_agent = Agent(
                 name="data",
                 instructions="Explain data analysis concepts.",
-                model="groq/compound-mini"
+                model="meta-llama/llama-guard-4-12b"
             )
 
             docs_agent = Agent(
                 name="docs",
                 instructions="Write documentation and summaries.",
-                model="groq/compound-mini"
+                model="meta-llama/llama-guard-4-12b"
             )
 
             # 4. Define Team with Routing Tags
 team = Team(
-                model="groq/compound-mini",
+                model="meta-llama/llama-guard-4-12b",
                 instructions=[
                     "You are the Intelligent Routing Orchestrator for ServiceNow Customer Support.",
                     "Your goal is to route user queries to the specific specialist agent best suited to handle them.",
