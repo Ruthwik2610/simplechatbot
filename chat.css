@@ -452,3 +452,107 @@ body {
     margin-left: 6px;
     padding: 2px;
 }
+/* --- DEBUG & AGENT STYLES --- */
+
+/* 1. Toggle Switch in Header */
+.debug-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 12px;
+    background: #F4F4F3;
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+.debug-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+/* The Switch Box */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+}
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+input:checked + .slider { background-color: var(--accent-color); }
+input:checked + .slider:before { transform: translateX(14px); }
+
+/* 2. Agent Badges */
+.agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.ai-tech { background: #E3F2FD; color: #1565C0; border: 1px solid #BBDEFB; }
+.ai-data { background: #E8F5E9; color: #2E7D32; border: 1px solid #C8E6C9; }
+.ai-docs { background: #FFF3E0; color: #EF6C00; border: 1px solid #FFE0B2; }
+.ai-default { background: #F5F5F5; color: #616161; border: 1px solid #E0E0E0; }
+
+/* 3. Debug Info Box */
+.debug-box {
+    background: #1e1e1e; /* Dark terminal look */
+    color: #00ff00;       /* Matrix green text */
+    padding: 12px;
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    margin-bottom: 16px;
+    border-left: 4px solid var(--accent-color);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.debug-header {
+    border-bottom: 1px solid #333;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.debug-row {
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+.debug-row code {
+    background: #333;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #ff9800;
+}
