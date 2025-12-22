@@ -8,7 +8,7 @@
 // --- Global State ---
 let isGenerating = false;
 let currentFile = null;
-let isDebugMode = false; // New state for Debug Toggle
+let isDebugMode = false;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB Limit
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -110,9 +110,9 @@ async function handleSend() {
     }
     addMessageToDom('user', userDisplayHtml);
 
-    // 2. Prepare Payload
+    // 2. Prepare Payload & Start Loading
     isGenerating = true;
-    const loadingId = addLoadingIndicator();
+    const loadingId = addLoadingIndicator("Consulting team...");
     
     try {
         let fullContentForAI = text;
@@ -157,7 +157,8 @@ My Question: ${text}
 
         let aiText = data.choices[0].message.content;
 
-        // --- ROUTING LOGIC START ---
+        // --- ROUTING LOGIC & VISUALIZATION ---
+        
         // Default Identity
         let agentIdentity = { 
             name: "Team Orchestrator", 
@@ -177,15 +178,29 @@ My Question: ${text}
             agentIdentity = { name: "Docs Writer", icon: "fa-book", class: "ai-docs", rawTag: "[[DOCS]]" };
             aiText = aiText.replace('[[DOCS]]', '').trim();
         } else if (aiText.includes('[[TEAM]]')) {
-             // Keeps default orchestrator identity
              aiText = aiText.replace('[[TEAM]]', '').trim();
              agentIdentity.rawTag = "[[TEAM]]";
         }
-        // --- ROUTING LOGIC END ---
+
+        // --- VISUAL ROUTING ANIMATION ---
+        // Update the loading bubble to show the user WHO was selected
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) {
+            const contentEl = loadingEl.querySelector('.message-content');
+            // Change text to "Routing to Tech Agent..."
+            contentEl.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <i class="fas ${agentIdentity.icon}" style="color:var(--accent-color)"></i>
+                    <span>Routing to <strong>${agentIdentity.name}</strong>...</span>
+                </div>
+            `;
+            // Small delay so the user notices the change
+            await new Promise(r => setTimeout(r, 800));
+        }
 
         removeLoadingIndicator(loadingId);
         
-        // 4. Render Response with Agent Badge
+        // 4. Render Final Response
         await streamResponseWithAgent(aiText, agentIdentity);
 
     } catch (error) {
@@ -328,7 +343,7 @@ function addMessageToDom(role, contentOrHtml) {
     return div;
 }
 
-function addLoadingIndicator() {
+function addLoadingIndicator(text) {
     const container = document.getElementById('messagesArea');
     const div = document.createElement('div');
     div.className = 'message-wrapper loading-msg';
@@ -337,7 +352,7 @@ function addLoadingIndicator() {
         <div class="role-icon ai"><i class="fas fa-robot"></i></div>
         <div class="message-content">
             <div class="typing-dot" style="display:inline-block; width:8px; height:8px; background:#DA7756; border-radius:50%; animation: pulse 1s infinite;"></div>
-            <span style="font-size:13px; color:#666; margin-left:8px;">Consulting team...</span>
+            <span style="font-size:13px; color:#666; margin-left:8px;">${text}</span>
         </div>
     `;
     container.appendChild(div);
