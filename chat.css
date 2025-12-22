@@ -502,12 +502,13 @@ input:checked + .slider { background-color: var(--accent-color); }
 input:checked + .slider:before { transform: translateX(14px); }
 
 /* 2. Agent Badges */
+/* Badge Styles */
 .agent-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
-    border-radius: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
     font-size: 11px;
     font-weight: 700;
     margin-bottom: 12px;
@@ -516,9 +517,9 @@ input:checked + .slider:before { transform: translateX(14px); }
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
-.ai-tech { background: #E3F2FD; color: #1565C0; border: 1px solid #BBDEFB; }
-.ai-data { background: #E8F5E9; color: #2E7D32; border: 1px solid #C8E6C9; }
-.ai-docs { background: #FFF3E0; color: #EF6C00; border: 1px solid #FFE0B2; }
+.ai-tech { background: #E3F2FD; color: #1565C0; border: 1px solid #90CAF9; }
+.ai-data { background: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
+.ai-docs { background: #FFF3E0; color: #EF6C00; border: 1px solid #FFCC80; }
 .ai-default { background: #F5F5F5; color: #616161; border: 1px solid #E0E0E0; }
 
 /* 3. Debug Info Box */
