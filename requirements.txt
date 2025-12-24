@@ -1,7 +1,3 @@
 agno
 groq
-pydantic
-langchain-groq
-json
-os
 supabase
