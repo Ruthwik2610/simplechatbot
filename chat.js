@@ -1,24 +1,31 @@
 (function checkAuth() {
     const user = localStorage.getItem('currentUser');
-    if (!user) {
-        window.location.href = 'index.html';
-    }
+    if (!user) window.location.href = 'index.html';
 })();
 
 // --- Global State ---
 let isGenerating = false;
 let currentFile = null;
-let isDebugMode = false;
-let abortController = null; // NEW: Controller to stop requests
+let abortController = null;
+let isDebugMode = false; // Added back if you want debug toggle support
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB Limit
+
+// --- Session Management (Supabase) ---
+function getConversationId() {
+    let id = localStorage.getItem('conversationId');
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem('conversationId', id);
+    }
+    return id;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupFileHandling();
     autoResizeTextarea();
-    if (window.hljs) hljs.highlightAll();
-
-    // Initialize Debug Toggle Listener
+    
+    // Debug toggle listener
     const debugToggle = document.getElementById('debugModeToggle');
     if (debugToggle) {
         debugToggle.addEventListener('change', (e) => {
@@ -33,12 +40,14 @@ function setGeneratingState(generating) {
     const sendBtn = document.getElementById('sendBtn');
     const stopBtn = document.getElementById('stopBtn');
     
-    if (generating) {
-        sendBtn.style.display = 'none';
-        stopBtn.style.display = 'flex';
-    } else {
-        sendBtn.style.display = 'flex';
-        stopBtn.style.display = 'none';
+    if (sendBtn && stopBtn) {
+        if (generating) {
+            sendBtn.style.display = 'none';
+            stopBtn.style.display = 'flex';
+        } else {
+            sendBtn.style.display = 'flex';
+            stopBtn.style.display = 'none';
+        }
     }
 }
 
@@ -136,6 +145,7 @@ async function handleSend() {
     
     try {
         let fullContentForAI = text;
+        const conversationId = getConversationId(); // Get UUID for Supabase
 
         if (currentFile) {
             try {
@@ -162,11 +172,14 @@ ${text}
         
         clearFile(); 
 
-        // 3. Send to API with Abort Signal
+        // 3. Send to API with Abort Signal and Conversation ID
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: fullContentForAI }),
+            body: JSON.stringify({ 
+                message: fullContentForAI,
+                conversation_id: conversationId 
+            }),
             signal: abortController.signal // Link controller to fetch
         });
 
@@ -192,6 +205,7 @@ ${text}
             rawTag: "None" 
         };
         
+        // Detect Tags
         if (aiText.includes('[[TECH]]')) {
             agentIdentity = { name: "Tech Agent", icon: "fa-code", class: "ai-tech", rawTag: "[[TECH]]" };
             aiText = aiText.replace('[[TECH]]', '').trim();
@@ -230,7 +244,6 @@ ${text}
         // Handle Abort specifically
         if (error.name === 'AbortError') {
              // Optional: Add a small "Stopped" note
-             // addMessageToDom('ai', '<span style="color:#999; font-style:italic;">Generation stopped by user.</span>');
         } else {
             console.error("Chat Error:", error);
             let displayError = error.message || "An unknown error occurred.";
@@ -242,7 +255,7 @@ ${text}
     }
 }
 
-// --- NEW: Handle Stop ---
+// --- Handle Stop ---
 function handleStop() {
     if (abortController) {
         abortController.abort();
@@ -349,6 +362,9 @@ function startNewChat() {
     const emptyState = document.getElementById('emptyState');
     
     handleStop(); // Stop any pending generation
+    
+    // Clear conversation ID for a new session
+    localStorage.removeItem('conversationId');
 
     const messages = container.querySelectorAll('.message-wrapper');
     messages.forEach(msg => msg.remove());
