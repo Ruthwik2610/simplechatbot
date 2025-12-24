@@ -6,9 +6,8 @@ from agno.team import Team
 from supabase import create_client, Client
 
 # --- CONFIGURATION ---
-# Ensure these are set in your Vercel Environment Variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY") 
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -32,85 +31,110 @@ class handler(BaseHTTPRequestHandler):
             user_message = body.get('message', '')
             conversation_id = body.get('conversation_id')
 
-            if not conversation_id:
-                self.wfile.write(json.dumps({'error': 'Missing conversation_id'}).encode('utf-8'))
-                return
+            # 3. Initialize Supabase
+            previous_messages = []
+            if conversation_id and SUPABASE_URL and SUPABASE_KEY:
+                try:
+                    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+                    # Save user message
+                    supabase.table("chat_messages").insert({
+                        "conversation_id": conversation_id,
+                        "role": "user",
+                        "content": user_message
+                    }).execute()
+                    
+                    # Fetch History (Limit 6 for efficiency)
+                    history_response = supabase.table("chat_messages")\
+                        .select("*")\
+                        .eq("conversation_id", conversation_id)\
+                        .order("created_at", desc=True)\
+                        .limit(6)\
+                        .execute()
+                    
+                    previous_messages = history_response.data[::-1]
+                except Exception:
+                    pass
 
-            # 3. Initialize Supabase Client
-            supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            # 4. Context Engineering (Token Optimized)
+            formatted_history = ""
+            if previous_messages:
+                formatted_history += "<history>\n"
+                for msg in previous_messages:
+                    role_label = "User" if msg['role'] == 'user' else "Assistant"
+                    # Strip previous tags to save tokens/reduce confusion
+                    clean_content = msg['content'].replace('[[TECH]]', '').replace('[[DATA]]', '').replace('[[DOCS]]', '').replace('[[TEAM]]', '')
+                    if "<file_content>" in clean_content:
+                        clean_content = "[User attached file]"
+                    formatted_history += f"{role_label}: {clean_content}\n"
+                formatted_history += "</history>\n"
 
-            # 4. Save User Message to DB
-            supabase.table("chat_messages").insert({
-                "conversation_id": conversation_id,
-                "role": "user",
-                "content": user_message
-            }).execute()
-
-            # 5. Fetch Chat History (Context Engineering)
-            # Get last 10 messages for this conversation
-            history_response = supabase.table("chat_messages")\
-                .select("*")\
-                .eq("conversation_id", conversation_id)\
-                .order("created_at", desc=True)\
-                .limit(10)\
-                .execute()
-            
-            # Reverse to chronological order (Oldest -> Newest)
-            previous_messages = history_response.data[::-1]
-            
-            formatted_history = "\n<conversation_history>\n"
-            for msg in previous_messages:
-                role_label = "User" if msg['role'] == 'user' else "Assistant"
-                # Scrub file content placeholders if needed to save tokens
-                clean_content = msg['content']
-                if "<file_content>" in clean_content:
-                    clean_content = "[User attached a file]"
-                formatted_history += f"{role_label}: {clean_content}\n"
-            formatted_history += "</conversation_history>\n"
-
-            # 6. Define Agents
+            # 5. Define Agents
             model_id = "groq:llama-3.1-8b-instant"
 
             tech_agent = Agent(
-                name="tech",
+                name="Tech",
+                role="Developer",
                 model=model_id,
-                instructions=["You are a Technical Expert.", "Answer with code examples."]
+                instructions=["Fix code, debug, explain APIs."]
             )
             
             data_agent = Agent(
-                name="data", 
-                instructions="You are a Data Analyst.", 
-                model=model_id
+                name="Data", 
+                role="Analyst",
+                model=model_id, 
+                instructions=["Analyze metrics, visualize trends."]
             )
 
             docs_agent = Agent(
-                name="docs", 
-                instructions="You are a Documentation Writer.", 
-                model=model_id
+                name="Docs", 
+                role="Writer",
+                model=model_id, 
+                instructions=["Write summaries, SOPs, release notes."]
             )
 
-            # 7. Run Team with History
+            # 6. Parahelp-Style Optimized Instructions
             team = Team(
                 model=model_id,
                 members=[tech_agent, data_agent, docs_agent],
                 instructions=[
-                    "You are the Intelligent Routing Orchestrator.",
-                    f"CONTEXT: Use the following history to understand the conversation:\n{formatted_history}",
-                    "ROUTING TAGS: Start response with [[TECH]], [[DATA]], [[DOCS]], or [[TEAM]]."
+                    "<role>Orchestrator</role>",
+                    f"{formatted_history}",
+                    "<logic>",
+                    "IF query involves code/scripting/errors -> Delegate to Tech.",
+                    "IF query involves analytics/charts/trends -> Delegate to Data.",
+                    "IF query involves writing/summaries/SOPs -> Delegate to Docs.",
+                    "IF query is greeting/general/unclear -> Answer as Team.",
+                    "</logic>",
+                    "<constraints>",
+                    "1. Do NOT describe the plan. Execute delegation immediately.",
+                    "2. Do NOT output internal xml tags in final response.",
+                    "</constraints>",
+                    "<output_format>",
+                    "IMPORTANT: Prefix final response with EXACTLY one tag:",
+                    "[[TECH]] <response> (if Tech used)",
+                    "[[DATA]] <response> (if Data used)",
+                    "[[DOCS]] <response> (if Docs used)",
+                    "[[TEAM]] <response> (if self-answered)",
+                    "</output_format>"
                 ]
             )
 
+            # 7. Execute
             response = team.run(user_message, stream=False)
             ai_content = response.content if hasattr(response, 'content') else str(response)
 
-            # 8. Save AI Response to DB
-            supabase.table("chat_messages").insert({
-                "conversation_id": conversation_id,
-                "role": "ai",
-                "content": ai_content
-            }).execute()
+            # 8. Save AI Response
+            if conversation_id and SUPABASE_URL and SUPABASE_KEY:
+                try:
+                    supabase.table("chat_messages").insert({
+                        "conversation_id": conversation_id,
+                        "role": "ai",
+                        "content": ai_content
+                    }).execute()
+                except Exception:
+                    pass
 
-            # 9. Send Response to Client
+            # 9. Send Response
             self.wfile.write(json.dumps({
                 "choices": [{"message": {"content": ai_content}}]
             }).encode('utf-8'))
