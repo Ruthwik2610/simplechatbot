@@ -8,7 +8,7 @@ from supabase import create_client, Client
 # --- CONFIGURATION ---
 # Ensure these are set in your Vercel Environment Variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
