@@ -2,3 +2,7 @@ agno
 groq
 pydantic
 langchain-groq
+http.server
+json
+os
+supabase
