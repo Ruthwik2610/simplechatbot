@@ -350,7 +350,31 @@ body {
     transition: background 0.2s;
 }
 .send-btn:hover { background: var(--accent-hover); }
+/* --- STOP BUTTON --- */
+.stop-btn {
+    width: 32px;
+    height: 32px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+    font-size: 12px;
+}
 
+.stop-btn:hover {
+    background: #f0f0f0;
+    border-color: #ccc;
+}
+
+/* Animation to smooth the swap between Send and Stop */
+.stop-btn i {
+    animation: fadeIn 0.2s;
+}
 .disclaimer {
     text-align: center;
     font-size: 11px;
