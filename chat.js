@@ -7,7 +7,7 @@
 let isGenerating = false;
 let currentFile = null;
 let abortController = null;
-let isDebugMode = false; // Added back if you want debug toggle support
+let isDebugMode = false; 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB Limit
 
 // --- Session Management (Supabase) ---
