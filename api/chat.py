@@ -27,7 +27,7 @@ app.add_middleware(
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
 MODEL1 = "groq:llama-3.1-8b-instant"
-MODEL2="groq:llama-3.1-70b-versatile"
+MODEL2="groq:llama-3.3-70b-versatile"
 
 # Initialize Supabase Client
 supabase: Client = None
