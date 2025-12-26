@@ -26,7 +26,8 @@ app.add_middleware(
 # --- CONFIGURATION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
-GROQ_MODEL = "groq:llama-3.1-8b-instant"
+MODEL1 = "groq:llama-3.1-8b-instant"
+MODEL2="groq:llama-3.1-70b-versatile"
 
 # Initialize Supabase Client
 supabase: Client = None
@@ -38,7 +39,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 tech_agent = Agent(
     name="Tech",
     role="Developer",
-    model=GROQ_MODEL,
+    model=MODEL1,
     instructions=[
         "You are a senior software engineer.",
         "Provide code snippets in markdown blocks.",
@@ -50,7 +51,7 @@ tech_agent = Agent(
 data_agent = Agent(
     name="Data",
     role="Analyst",
-    model=GROQ_MODEL,
+    model=MODEL1,
     instructions=[
         "You are a data analyst.",
         "Analyze text or data patterns.",
@@ -62,7 +63,7 @@ data_agent = Agent(
 docs_agent = Agent(
     name="Docs",
     role="Writer",
-    model=GROQ_MODEL,
+    model=MODEL1,
     instructions=[
         "You are a technical writer.",
         "Write clear summaries, SOPs, and documentation.",
@@ -72,7 +73,7 @@ docs_agent = Agent(
 
 # Team Orchestrator: Decides which agent to use
 team = Team(
-    model=GROQ_MODEL,
+    model=MODEL2,
     members=[tech_agent, data_agent, docs_agent],
     instructions=[
         "<role>Orchestrator</role>",
