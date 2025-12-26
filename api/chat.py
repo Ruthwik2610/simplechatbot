@@ -181,4 +181,4 @@ def chat_handler(req: ChatRequest):
 # Health check endpoint
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "backend": "FastAPI + Agno"}s
+    return {"status": "ok", "backend": "FastAPI + Agno"}
