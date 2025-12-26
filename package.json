@@ -1,3 +1,8 @@
 {
-  "type": "module"
+  "name": "ai-agent-app",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "vercel": "latest"
+  }
 }
