@@ -55,13 +55,13 @@ class handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-            # 4. Context Engineering (Token Optimized)
+            # 4. Context Engineering 
             formatted_history = ""
             if previous_messages:
                 formatted_history += "<history>\n"
                 for msg in previous_messages:
                     role_label = "User" if msg['role'] == 'user' else "Assistant"
-                    # Strip previous tags to save tokens/reduce confusion
+                  
                     clean_content = msg['content'].replace('[[TECH]]', '').replace('[[DATA]]', '').replace('[[DOCS]]', '').replace('[[TEAM]]', '')
                     if "<file_content>" in clean_content:
                         clean_content = "[User attached file]"
@@ -96,6 +96,7 @@ class handler(BaseHTTPRequestHandler):
             team = Team(
                 model=model_id,
                 members=[tech_agent, data_agent, docs_agent],
+                show_tool_calls=False,
                 instructions=[
                     "<role>Orchestrator</role>",
                     f"{formatted_history}",
