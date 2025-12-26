@@ -1,146 +1,184 @@
-from http.server import BaseHTTPRequestHandler
-import json
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 import os
+import json
+
+# --- AGNO & SUPABASE IMPORTS ---
 from agno.agent import Agent
 from agno.team import Team
 from supabase import create_client, Client
 
+# --- INIT FASTAPI ---
+app = FastAPI()
+
+# --- CORS SETTINGS ---
+# Crucial for Vercel: Allow your frontend to hit this backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with your Vercel URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- CONFIGURATION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY") 
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
+GROQ_MODEL = "groq:llama-3.1-8b-instant"
 
-class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        # 1. Setup CORS
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+# Initialize Supabase Client
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-        if self.command == 'OPTIONS':
-            return
+# --- DEFINE AGENTS (Global Scope for Efficiency) ---
+# Tech Agent: Handles code execution, debugging, and technical concepts
+tech_agent = Agent(
+    name="Tech",
+    role="Developer",
+    model=GROQ_MODEL,
+    instructions=[
+        "You are a senior software engineer.",
+        "Provide code snippets in markdown blocks.",
+        "Debug errors and explain solutions clearly."
+    ]
+)
 
-        try:
-            # 2. Parse Request
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            body = json.loads(post_data.decode('utf-8'))
-            
-            user_message = body.get('message', '')
-            conversation_id = body.get('conversation_id')
+# Data Agent: Handles analytics, math, and trends
+data_agent = Agent(
+    name="Data",
+    role="Analyst",
+    model=GROQ_MODEL,
+    instructions=[
+        "You are a data analyst.",
+        "Analyze text or data patterns.",
+        "Suggest visualizations or metrics."
+    ]
+)
 
-            # 3. Initialize Supabase
-            previous_messages = []
-            if conversation_id and SUPABASE_URL and SUPABASE_KEY:
-                try:
-                    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-                    # Save user message
-                    supabase.table("chat_messages").insert({
-                        "conversation_id": conversation_id,
-                        "role": "user",
-                        "content": user_message
-                    }).execute()
-                    
-                    # Fetch History (Limit 6 for efficiency)
-                    history_response = supabase.table("chat_messages")\
-                        .select("*")\
-                        .eq("conversation_id", conversation_id)\
-                        .order("created_at", desc=True)\
-                        .limit(6)\
-                        .execute()
-                    
-                    previous_messages = history_response.data[::-1]
-                except Exception:
-                    pass
+# Docs Agent: Handles writing and documentation
+docs_agent = Agent(
+    name="Docs",
+    role="Writer",
+    model=GROQ_MODEL,
+    instructions=[
+        "You are a technical writer.",
+        "Write clear summaries, SOPs, and documentation.",
+        "Use professional, easy-to-read formatting."
+    ]
+)
 
-            # 4. Context Engineering 
-            formatted_history = ""
-            if previous_messages:
-                formatted_history += "<history>\n"
-                for msg in previous_messages:
-                    role_label = "User" if msg['role'] == 'user' else "Assistant"
-                  
-                    clean_content = msg['content'].replace('[[TECH]]', '').replace('[[DATA]]', '').replace('[[DOCS]]', '').replace('[[TEAM]]', '')
-                    if "<file_content>" in clean_content:
-                        clean_content = "[User attached file]"
-                    formatted_history += f"{role_label}: {clean_content}\n"
-                formatted_history += "</history>\n"
+# Team Orchestrator: Decides which agent to use
+team = Team(
+    model=GROQ_MODEL,
+    members=[tech_agent, data_agent, docs_agent],
+    instructions=[
+        "<role>Orchestrator</role>",
+        "<logic>",
+        "Analyze the user's input to determine the intent.",
+        "IF intent is Code/Debugging/Scripting -> Delegate to 'Tech'.",
+        "IF intent is Analysis/Math/Charts -> Delegate to 'Data'.",
+        "IF intent is Writing/Documentation/Summary -> Delegate to 'Docs'.",
+        "IF intent is Greeting/General -> Answer directly as 'Team'.",
+        "</logic>",
+        "<formatting>",
+        "You MUST prefix your final response with ONE of these tags:",
+        "[[TECH]] - if Tech agent was used.",
+        "[[DATA]] - if Data agent was used.",
+        "[[DOCS]] - if Docs agent was used.",
+        "[[TEAM]] - if you answered directly.",
+        "Example: [[TECH]] Here is the python code fix...",
+        "</formatting>"
+    ]
+)
 
-            # 5. Define Agents
-            model_id1 = "groq:llama-3.1-8b-instant"
-            model_id2="groq:llama-3.1-8b-instant"
+# --- REQUEST MODEL ---
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: Optional[str] = None
 
-            tech_agent = Agent(
-                name="Tech",
-                role="Developer",
-                model=model_id2,
-                instructions=["Fix code, debug, explain APIs."]
-            )
-            
-            data_agent = Agent(
-                name="Data", 
-                role="Analyst",
-                model=model_id2, 
-                instructions=["Analyze metrics, visualize trends."]
-            )
+# --- MAIN ENDPOINT ---
+# Note: The route matches the path in your chat.js fetch call
+@app.post("/api/chat")
+async def chat_handler(req: ChatRequest):
+    try:
+        # 1. Save User Message to Supabase
+        if supabase and req.conversation_id:
+            try:
+                supabase.table("chat_messages").insert({
+                    "conversation_id": req.conversation_id,
+                    "role": "user",
+                    "content": req.message
+                }).execute()
+            except Exception as e:
+                print(f"Supabase Insert Error: {e}")
 
-            docs_agent = Agent(
-                name="Docs", 
-                role="Writer",
-                model=model_id2, 
-                instructions=["Write summaries, SOPs, release notes."]
-            )
-
-            # 6. Parahelp-Style Optimized Instructions
-            team = Team(
-                model=model_id1,
-                members=[tech_agent, data_agent, docs_agent],
+        # 2. Fetch Context (History)
+        history_context = ""
+        if supabase and req.conversation_id:
+            try:
+                # Fetch last 6 messages
+                hist_res = supabase.table("chat_messages")\
+                    .select("*")\
+                    .eq("conversation_id", req.conversation_id)\
+                    .order("created_at", desc=True)\
+                    .limit(6)\
+                    .execute()
                 
-                instructions=[
-                    "<role>Orchestrator</role>",
-                    f"{formatted_history}",
-                    "<logic>",
-                    "IF query involves code/scripting/errors -> Delegate to Tech.",
-                    "IF query involves analytics/charts/trends -> Delegate to Data.",
-                    "IF query involves writing/summaries/SOPs -> Delegate to Docs.",
-                    "IF query is greeting/general/unclear -> Answer as Team.",
-                    "</logic>",
-                    "<constraints>",
-                    "1. Do NOT describe the plan. Execute delegation immediately.",
-                    "2. Do NOT output internal xml tags in final response.",
-                    "</constraints>",
-                    "<output_format>",
-                    "IMPORTANT: Prefix final response with EXACTLY one tag:",
-                    "[[TECH]] <response> (if Tech used)",
-                    "[[DATA]] <response> (if Data used)",
-                    "[[DOCS]] <response> (if Docs used)",
-                    "[[TEAM]] <response> (if self-answered)",
-                    "</output_format>"
-                ]
-            )
+                # Reverse to get chronological order
+                msgs = hist_res.data[::-1]
+                
+                if msgs:
+                    history_context = "<history>\n"
+                    for m in msgs:
+                        # Clean tags from history so model doesn't get confused
+                        clean_content = m['content'].replace('[[TECH]]', '').replace('[[DATA]]', '').replace('[[DOCS]]', '')
+                        role = "User" if m['role'] == 'user' else "Assistant"
+                        history_context += f"{role}: {clean_content}\n"
+                    history_context += "</history>\n"
+            except Exception as e:
+                print(f"Supabase History Error: {e}")
 
-            # 7. Execute
-            response = team.run(user_message, stream=False)
-            ai_content = response.content if hasattr(response, 'content') else str(response)
+        # 3. Run the AI Team
+        # We append history to the prompt so the agent sees it
+        full_prompt = f"{history_context}\nUser Query: {req.message}"
+        
+        # Run agent (agno team run)
+        response = team.run(full_prompt)
+        
+        # specific handling depending on what 'team.run' returns
+        # Assuming it returns an object with a .content string or is a string itself
+        ai_content = response.content if hasattr(response, "content") else str(response)
 
-            # 8. Save AI Response
-            if conversation_id and SUPABASE_URL and SUPABASE_KEY:
-                try:
-                    supabase.table("chat_messages").insert({
-                        "conversation_id": conversation_id,
-                        "role": "ai",
+        # 4. Save AI Response to Supabase
+        if supabase and req.conversation_id:
+            try:
+                supabase.table("chat_messages").insert({
+                    "conversation_id": req.conversation_id,
+                    "role": "ai",
+                    "content": ai_content
+                }).execute()
+            except Exception as e:
+                print(f"Supabase Save AI Error: {e}")
+
+        # 5. Return JSON in the format chat.js expects
+        return {
+            "choices": [
+                {
+                    "message": {
                         "content": ai_content
-                    }).execute()
-                except Exception:
-                    pass
+                    }
+                }
+            ]
+        }
 
-            # 9. Send Response
-            self.wfile.write(json.dumps({
-                "choices": [{"message": {"content": ai_content}}]
-            }).encode('utf-8'))
+    except Exception as e:
+        print(f"SERVER ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+# Health check endpoint
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "backend": "FastAPI + Agno"}s
