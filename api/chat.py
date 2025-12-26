@@ -102,7 +102,7 @@ class ChatRequest(BaseModel):
 # --- MAIN ENDPOINT ---
 # Note: The route matches the path in your chat.js fetch call
 @app.post("/api/chat")
-async def chat_handler(req: ChatRequest):
+def chat_handler(req: ChatRequest):
     try:
         # 1. Save User Message to Supabase
         if supabase and req.conversation_id:
