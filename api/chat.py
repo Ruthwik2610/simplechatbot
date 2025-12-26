@@ -39,7 +39,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 tech_agent = Agent(
     name="Tech",
     role="Developer",
-    model=MODEL1,
+    model=MODEL2,
     instructions=[
         "You are a senior software engineer.",
         "Provide code snippets in markdown blocks.",
@@ -51,7 +51,7 @@ tech_agent = Agent(
 data_agent = Agent(
     name="Data",
     role="Analyst",
-    model=MODEL1,
+    model=MODEL2,
     instructions=[
         "You are a data analyst.",
         "Analyze text or data patterns.",
@@ -63,7 +63,7 @@ data_agent = Agent(
 docs_agent = Agent(
     name="Docs",
     role="Writer",
-    model=MODEL1,
+    model=MODEL2,
     instructions=[
         "You are a technical writer.",
         "Write clear summaries, SOPs, and documentation.",
