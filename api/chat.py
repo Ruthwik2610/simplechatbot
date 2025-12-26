@@ -69,34 +69,35 @@ class handler(BaseHTTPRequestHandler):
                 formatted_history += "</history>\n"
 
             # 5. Define Agents
-            model_id = "groq:llama-3.1-8b-instant"
+            model_id1 = "groq:llama-3.1-8b-instant"
+            model_id2="groq:llama-3.1-8b-instant"
 
             tech_agent = Agent(
                 name="Tech",
                 role="Developer",
-                model=model_id,
+                model=model_id2,
                 instructions=["Fix code, debug, explain APIs."]
             )
             
             data_agent = Agent(
                 name="Data", 
                 role="Analyst",
-                model=model_id, 
+                model=model_id2, 
                 instructions=["Analyze metrics, visualize trends."]
             )
 
             docs_agent = Agent(
                 name="Docs", 
                 role="Writer",
-                model=model_id, 
+                model=model_id2, 
                 instructions=["Write summaries, SOPs, release notes."]
             )
 
             # 6. Parahelp-Style Optimized Instructions
             team = Team(
-                model=model_id,
+                model=model_id1,
                 members=[tech_agent, data_agent, docs_agent],
-                show_tool_calls=False,
+                
                 instructions=[
                     "<role>Orchestrator</role>",
                     f"{formatted_history}",
