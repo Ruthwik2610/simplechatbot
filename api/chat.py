@@ -183,3 +183,32 @@ def chat_handler(req: ChatRequest):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "backend": "FastAPI + Agno"}
+
+
+# Add a model for Login
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+# Add this endpoint to chat.py
+@app.post("/api/login")
+def login_handler(creds: LoginRequest):
+    # Load users from the JSON file
+    try:
+        with open("users.json", "r") as f:
+            users = json.load(f)
+            
+        # Search for user
+        user = next((u for u in users if u["email"] == creds.email and u["password"] == creds.password), None)
+        
+        if user:
+            return {
+                "success": True, 
+                "user": { "email": user["email"], "name": user["name"] }
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+            
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="User database not found")
+
