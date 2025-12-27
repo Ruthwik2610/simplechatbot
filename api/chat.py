@@ -27,7 +27,7 @@ app.add_middleware(
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
 MODEL1 = "groq:llama-3.1-8b-instant"
-MODEL2="groq:llama-3.3-70b-versatile"
+MODEL2 = "groq:llama-3.3-70b-versatile"
 
 # Initialize Supabase Client
 supabase: Client = None
@@ -95,13 +95,47 @@ team = Team(
     ]
 )
 
-# --- REQUEST MODEL ---
+# --- REQUEST MODELS ---
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
 
-# --- MAIN ENDPOINT ---
-# Note: The route matches the path in your chat.js fetch call
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+# --- ENDPOINTS ---
+
+@app.post("/api/login")
+def login_handler(creds: LoginRequest):
+    # Vercel-Safe File Path Logic
+    try:
+        # Resolve the absolute path to users.json relative to this script
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        json_path = os.path.join(current_dir, "users.json")
+        
+        with open(json_path, "r") as f:
+            users = json.load(f)
+            
+        # Search for user
+        user = next((u for u in users if u["email"] == creds.email and u["password"] == creds.password), None)
+        
+        if user:
+            return {
+                "success": True, 
+                "user": { "email": user["email"], "name": user["name"] }
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+            
+    except FileNotFoundError:
+        # Fallback for debugging path issues in logs
+        print(f"File not found at: {json_path}")
+        raise HTTPException(status_code=500, detail="User database not found")
+    except Exception as e:
+        print(f"Login Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat")
 def chat_handler(req: ChatRequest):
     try:
@@ -143,14 +177,12 @@ def chat_handler(req: ChatRequest):
                 print(f"Supabase History Error: {e}")
 
         # 3. Run the AI Team
-        # We append history to the prompt so the agent sees it
         full_prompt = f"{history_context}\nUser Query: {req.message}"
         
         # Run agent (agno team run)
         response = team.run(full_prompt)
         
         # specific handling depending on what 'team.run' returns
-        # Assuming it returns an object with a .content string or is a string itself
         ai_content = response.content if hasattr(response, "content") else str(response)
 
         # 4. Save AI Response to Supabase
@@ -183,32 +215,3 @@ def chat_handler(req: ChatRequest):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "backend": "FastAPI + Agno"}
-
-
-# Add a model for Login
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-# Add this endpoint to chat.py
-@app.post("/api/login")
-def login_handler(creds: LoginRequest):
-    # Load users from the JSON file
-    try:
-        with open("users.json", "r") as f:
-            users = json.load(f)
-            
-        # Search for user
-        user = next((u for u in users if u["email"] == creds.email and u["password"] == creds.password), None)
-        
-        if user:
-            return {
-                "success": True, 
-                "user": { "email": user["email"], "name": user["name"] }
-            }
-        else:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
-            
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="User database not found")
-
