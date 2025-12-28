@@ -215,6 +215,13 @@ input[type="checkbox"]:checked ~ .checkbox-label .checkmark::after {
     font-weight: bold;
 }
 
+.remember-wrapper input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
 .forgot-password {
     color: var(--text-muted);
     text-decoration: none;
