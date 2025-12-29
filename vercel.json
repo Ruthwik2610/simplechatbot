@@ -1,9 +1,10 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/chat.py" }
+    { "source": "/api/chat", "destination": "/api/chat.py" },
+    { "source": "/api/login", "destination": "/api/login.py" }
   ],
   "functions": {
-    "api/chat.py": {
+    "api/login.py": {
       "includeFiles": "api/users.json"
     }
   }
