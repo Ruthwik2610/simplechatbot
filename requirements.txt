@@ -7,3 +7,4 @@ openai
 pgvector
 sqlalchemy
 psycopg
+requests
