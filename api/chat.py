@@ -25,14 +25,29 @@ app.add_middleware(
 )
 
 # --- CONFIGURATION ---
-# 1. Standard API Keys (What you ALREADY have)
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
-GROQ_MODEL_ID = "llama-3.3-70b-versatile"
 
-# 2. RAG Keys (What you need for Vectors)
-SUPABASE_DB_URL = os.environ.get("SUPABASE_DB_URL") 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") 
+# --- CONFIGURATION ---
+# 1. Supabase API (For Chat Logs)
+# Try standard names first, fallback to Vercel integration names
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
+# 2. Database Connection (For RAG / Vectors)
+# We construct the DB_URL from the individual variables Vercel provides
+db_user = os.environ.get("POSTGRES_USER", "postgres")
+db_password = os.environ.get("POSTGRES_PASSWORD")
+db_host = os.environ.get("POSTGRES_HOST")
+db_name = os.environ.get("POSTGRES_DATABASE", "postgres")
+
+SUPABASE_DB_URL = None
+if db_password and db_host:
+    # Construct the PostgreSQL connection string manually
+    # Format: postgresql://user:password@host:port/database
+    SUPABASE_DB_URL = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
+
+# 3. AI Keys
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") # <--- STILL NEED TO ADD THIS ONE MANUALLY
+GROQ_MODEL_ID = "llama-3.3-70b-versatile"
 
 # Init Supabase Client (For Chat Logs)
 supabase: Optional[Client] = None
