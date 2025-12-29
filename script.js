@@ -210,32 +210,42 @@ class LoginForm1 {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
-            // --- NEW: Call Vercel Backend ---
+            // --- CHANGED SECTION STARTS HERE ---
             const response = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
 
+            // 1. Check if the response is actually valid JSON
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                // If it's HTML (like a 404 or 500 error page), read it as text
+                const text = await response.text();
+                throw new Error(`Server Error (${response.status}): ${text.slice(0, 100)}...`); 
+            }
+
             const data = await response.json();
 
-            if (response.ok && data.success) {
-                // Login Success!
-                // Save user info (without password) to browser for the chat page to use
-                localStorage.setItem('currentUser', JSON.stringify(data.user));
+            if (!response.ok) {
+                // If the server explicitly sent an error message (like "Invalid password")
+                throw new Error(data.detail || data.error || 'Login failed');
+            }
 
+            if (data.success) {
+                // Login Success!
+                localStorage.setItem('currentUser', JSON.stringify(data.user));
                 this.showSuccessMessage();
 
                 setTimeout(() => {
                     window.location.href = 'chat.html';
                 }, 1500);
-            } else {
-                throw new Error(data.error || 'Login failed');
             }
-            // --------------------------------
+            // --- CHANGED SECTION ENDS HERE ---
 
         } catch (error) {
             console.error('Login error:', error);
+            // Now the error message on screen will actually tell you what's wrong
             this.showLoginError(error.message);
         } finally {
             this.isSubmitting = false;
