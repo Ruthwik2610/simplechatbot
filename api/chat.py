@@ -4,13 +4,13 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 
-# --- AGNO IMPORTS ---
+# --- CORRECTED AGNO IMPORTS ---
 from agno.agent import Agent
-from agno.team import Team  # <--- Fixed: Added Team import
+from agno.team import Team                        
 from agno.models.groq import Groq
 from agno.vectordb.pgvector import PgVector, SearchType
-from agno.knowledge import Knowledge 
-from agno.embedder.openai import OpenAIEmbedder # check path, sometimes agno.knowledge.embedder...
+from agno.knowledge.knowledge import Knowledge    
+from agno.knowledge.embedder.openai import OpenAIEmbedder 
 from supabase import create_client, Client
 
 app = FastAPI()
