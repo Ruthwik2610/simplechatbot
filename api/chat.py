@@ -5,11 +5,12 @@ from typing import Optional
 import os
 
 # --- IMPORTS ---
+# --- CORRECT AGNO v1.0+ IMPORTS ---
 from agno.agent import Agent
-from agno.team import Team
-from agno.knowledge import Knowledge  # Correct class name
+from agno.models.groq import Groq
 from agno.vectordb.pgvector import PgVector, SearchType
-from agno.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge 
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 from supabase import create_client, Client
 
 app = FastAPI()
