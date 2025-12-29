@@ -8,7 +8,7 @@ import json
 # --- AGNO & SUPABASE IMPORTS ---
 from agno.agent import Agent
 from agno.team import Team
-from agno.knowledge import AgentKnowledge
+from agno.knowledge import Knowledge  
 from agno.vectordb.pgvector import PgVector, SearchType
 from agno.embedder.openai import OpenAIEmbedder
 from supabase import create_client, Client
@@ -48,7 +48,8 @@ vector_db = PgVector(
     search_type=SearchType.hybrid, 
 )
 
-knowledge_base = AgentKnowledge(vector_db=vector_db)
+knowledge_base = =Knowledge(vector_db=vector_db)
+
 
 # --- 2. DEFINE AGENTS ---
 
