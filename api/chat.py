@@ -8,13 +8,15 @@ import json
 # --- AGNO & SUPABASE IMPORTS ---
 from agno.agent import Agent
 from agno.team import Team
+from agno.knowledge import AgentKnowledge
+from agno.vectordb.pgvector import PgVector, SearchType
+from agno.embedder.openai import OpenAIEmbedder
 from supabase import create_client, Client
 
 # --- INIT FASTAPI ---
 app = FastAPI()
 
-# --- CORS SETTINGS ---
-# Crucial for Vercel: Allow your frontend to hit this backend
+# --- CORS (Crucial for Vercel) ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -24,78 +26,94 @@ app.add_middleware(
 )
 
 # --- CONFIGURATION ---
+# Ensure these are set in Vercel Environment Variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
-MODEL1 = "groq:llama-3.1-8b-instant"
-MODEL2 = "groq:llama-3.3-70b-versatile"
+SUPABASE_DB_URL = os.environ.get("SUPABASE_DB_URL") # Format: postgresql+psycopg://user:pass@host:port/postgres
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") 
+GROQ_MODEL = "groq:llama-3.3-70b-versatile"
 
-# Initialize Supabase Client
+# Initialize Supabase Client (For simple logging)
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- DEFINE AGENTS (Global Scope for Efficiency) ---
-# Tech Agent: Handles code execution, debugging, and technical concepts
+# --- 1. SETUP VECTOR MEMORY (RAG) ---
+# This connects the agents to the 'agent_knowledge' table
+vector_db = PgVector(
+    db_url=SUPABASE_DB_URL,
+    table_name="agent_knowledge",
+    schema="public",
+    embedder=OpenAIEmbedder(api_key=OPENAI_API_KEY),
+    search_type=SearchType.hybrid, 
+)
+
+knowledge_base = AgentKnowledge(vector_db=vector_db)
+
+# --- 2. DEFINE AGENTS ---
+
+# Tech Agent
 tech_agent = Agent(
     name="Tech",
     role="Developer",
-    model=MODEL2,
-    instructions=[
-        "You are a senior software engineer.",
-        "Provide code snippets in markdown blocks.",
-        "Debug errors and explain solutions clearly."
-    ]
+    model=GROQ_MODEL,
+    instructions=["Provide code in markdown.", "Debug errors clearly."]
 )
 
-# Data Agent: Handles analytics, math, and trends
+# Data Agent
 data_agent = Agent(
     name="Data",
     role="Analyst",
-    model=MODEL2,
-    instructions=[
-        "You are a data analyst.",
-        "Analyze text or data patterns.",
-        "Suggest visualizations or metrics."
-    ]
+    model=GROQ_MODEL,
+    instructions=["Analyze patterns.", "Suggest visualizations."]
 )
 
-# Docs Agent: Handles writing and documentation
+# Docs Agent
 docs_agent = Agent(
     name="Docs",
     role="Writer",
-    model=MODEL2,
+    model=GROQ_MODEL,
+    instructions=["Write clear summaries and SOPs.", "Use professional formatting."]
+)
+
+# --- NEW: MEMORY AGENT (The Summarizer) ---
+# This agent has exclusive access to the Vector DB
+memory_agent = Agent(
+    name="Memory",
+    role="Historian",
+    model=GROQ_MODEL,
+    knowledge=knowledge_base, 
+    search_knowledge=True, # Enables RAG lookup
     instructions=[
-        "You are a technical writer.",
-        "Write clear summaries, SOPs, and documentation.",
-        "Use professional, easy-to-read formatting."
+        "You are the memory of this conversation.",
+        "Search the knowledge base for past context.",
+        "Summarize what was discussed previously based on the user's query.",
+        "If the user asks 'what did we talk about', summarize the recent vector history."
     ]
 )
 
-# Team Orchestrator: Decides which agent to use
+# --- SUPERVISOR TEAM ---
 team = Team(
-    model=MODEL2,
-    members=[tech_agent, data_agent, docs_agent],
+    model=GROQ_MODEL,
+    members=[tech_agent, data_agent, docs_agent, memory_agent],
     instructions=[
         "<role>Orchestrator</role>",
         "<logic>",
         "Analyze the user's input to determine the intent.",
-        "IF intent is Code/Debugging/Scripting -> Delegate to 'Tech'.",
-        "IF intent is Analysis/Math/Charts -> Delegate to 'Data'.",
-        "IF intent is Writing/Documentation/Summary -> Delegate to 'Docs'.",
-        "IF intent is Greeting/General -> Answer directly as 'Team'.",
+        "1. IF the user asks to SUMMARIZE the conversation, recall history, or asks 'what did I say' -> Delegate to 'Memory'.",
+        "2. IF intent is Code/Debugging -> Delegate to 'Tech'.",
+        "3. IF intent is Analysis/Math -> Delegate to 'Data'.",
+        "4. IF intent is Writing/Docs -> Delegate to 'Docs'.",
+        "5. IF intent is Greeting -> Answer directly as 'Team'.",
         "</logic>",
         "<formatting>",
-        "You MUST prefix your final response with ONE of these tags:",
-        "[[TECH]] - if Tech agent was used.",
-        "[[DATA]] - if Data agent was used.",
-        "[[DOCS]] - if Docs agent was used.",
-        "[[TEAM]] - if you answered directly.",
-        "Example: [[TECH]] Here is the python code fix...",
+        "Prefix response with ONE tag:",
+        "[[TECH]]", "[[DATA]]", "[[DOCS]]", "[[MEMORY]]", "[[TEAM]]",
         "</formatting>"
     ]
 )
 
-# --- REQUEST MODELS ---
+# --- MODELS ---
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
@@ -108,110 +126,77 @@ class LoginRequest(BaseModel):
 
 @app.post("/api/login")
 def login_handler(creds: LoginRequest):
-    # Vercel-Safe File Path Logic
+    # Securely read users.json from the API folder
     try:
-        # Resolve the absolute path to users.json relative to this script
         current_dir = os.path.dirname(os.path.abspath(__file__))
         json_path = os.path.join(current_dir, "users.json")
         
         with open(json_path, "r") as f:
             users = json.load(f)
             
-        # Search for user
         user = next((u for u in users if u["email"] == creds.email and u["password"] == creds.password), None)
         
         if user:
-            return {
-                "success": True, 
-                "user": { "email": user["email"], "name": user["name"] }
-            }
+            return {"success": True, "user": {"email": user["email"], "name": user["name"]}}
         else:
             raise HTTPException(status_code=401, detail="Invalid email or password")
             
     except FileNotFoundError:
-        # Fallback for debugging path issues in logs
-        print(f"File not found at: {json_path}")
         raise HTTPException(status_code=500, detail="User database not found")
     except Exception as e:
-        print(f"Login Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")
 def chat_handler(req: ChatRequest):
     try:
-        # 1. Save User Message to Supabase
+        # 1. Save User Message to Supabase Logs (UI History)
         if supabase and req.conversation_id:
-            try:
-                supabase.table("chat_messages").insert({
-                    "conversation_id": req.conversation_id,
-                    "role": "user",
-                    "content": req.message
-                }).execute()
-            except Exception as e:
-                print(f"Supabase Insert Error: {e}")
+            supabase.table("chat_messages").insert({
+                "conversation_id": req.conversation_id,
+                "role": "user",
+                "content": req.message
+            }).execute()
 
-        # 2. Fetch Context (History)
-        history_context = ""
-        if supabase and req.conversation_id:
+            # --- AUTO-LEARN: Save to Vector DB for Future Recall ---
             try:
-                # Fetch last 6 messages
-                hist_res = supabase.table("chat_messages")\
-                    .select("*")\
-                    .eq("conversation_id", req.conversation_id)\
-                    .order("created_at", desc=True)\
-                    .limit(6)\
-                    .execute()
-                
-                # Reverse to get chronological order
-                msgs = hist_res.data[::-1]
-                
-                if msgs:
-                    history_context = "<history>\n"
-                    for m in msgs:
-                        # Clean tags from history so model doesn't get confused
-                        clean_content = m['content'].replace('[[TECH]]', '').replace('[[DATA]]', '').replace('[[DOCS]]', '')
-                        role = "User" if m['role'] == 'user' else "Assistant"
-                        history_context += f"{role}: {clean_content}\n"
-                    history_context += "</history>\n"
-            except Exception as e:
-                print(f"Supabase History Error: {e}")
+                knowledge_base.load_text(
+                    text=req.message, 
+                    metadata={"conversation_id": req.conversation_id, "role": "user"}
+                )
+            except Exception as v_err:
+                print(f"Vector Save Error: {v_err}")
 
-        # 3. Run the AI Team
-        full_prompt = f"{history_context}\nUser Query: {req.message}"
+        # 2. Run the AI Team (Supervisor decides who answers)
+        # Note: We send just the query. If 'Memory' is selected, it fetches history itself.
+        response = team.run(f"User Query: {req.message}")
         
-        # Run agent (agno team run)
-        response = team.run(full_prompt)
-        
-        # specific handling depending on what 'team.run' returns
         ai_content = response.content if hasattr(response, "content") else str(response)
 
-        # 4. Save AI Response to Supabase
+        # 3. Save AI Response to Supabase Logs
         if supabase and req.conversation_id:
-            try:
-                supabase.table("chat_messages").insert({
-                    "conversation_id": req.conversation_id,
-                    "role": "ai",
-                    "content": ai_content
-                }).execute()
-            except Exception as e:
-                print(f"Supabase Save AI Error: {e}")
+            supabase.table("chat_messages").insert({
+                "conversation_id": req.conversation_id,
+                "role": "ai",
+                "content": ai_content
+            }).execute()
 
-        # 5. Return JSON in the format chat.js expects
+            # --- AUTO-LEARN: Save AI Answer to Vector DB ---
+            try:
+                knowledge_base.load_text(
+                    text=ai_content, 
+                    metadata={"conversation_id": req.conversation_id, "role": "ai"}
+                )
+            except Exception as v_err:
+                print(f"Vector Save AI Error: {v_err}")
+
         return {
-            "choices": [
-                {
-                    "message": {
-                        "content": ai_content
-                    }
-                }
-            ]
+            "choices": [{"message": {"content": ai_content}}]
         }
 
     except Exception as e:
         print(f"SERVER ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Health check endpoint
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "backend": "FastAPI + Agno"}
+    return {"status": "ok", "backend": "FastAPI + Agno + Supabase Vectors"}
