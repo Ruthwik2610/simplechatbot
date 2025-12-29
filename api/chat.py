@@ -1,16 +1,16 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import os
 
-# --- CORRECTED AGNO IMPORTS ---
+# --- IMPORTS ---
 from agno.agent import Agent
-from agno.team import Team                        
+from agno.team import Team
 from agno.models.groq import Groq
 from agno.vectordb.pgvector import PgVector, SearchType
-from agno.knowledge.knowledge import Knowledge    
-from agno.knowledge.embedder.openai import OpenAIEmbedder 
+from agno.knowledge.knowledge import Knowledge 
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 from supabase import create_client, Client
 
 app = FastAPI()
@@ -25,89 +25,90 @@ app.add_middleware(
 )
 
 # --- CONFIGURATION ---
+# 1. Standard API Keys (What you ALREADY have)
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
+GROQ_MODEL_ID = "llama-3.3-70b-versatile"
+
+# 2. RAG Keys (What you need for Vectors)
 SUPABASE_DB_URL = os.environ.get("SUPABASE_DB_URL") 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") 
-GROQ_MODEL = "llama-3.3-70b-versatile" # Pass ID directly to model class
 
-# Init Supabase
+# Init Supabase Client (For Chat Logs)
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        print(f"Supabase Init Error: {e}")
+        print(f"Supabase Client Error: {e}")
 
-# --- LAZY LOADING AI ---
-team_instance = None
-knowledge_base_instance = None
+# --- AI SETUP ---
+def get_team():
+    """
+    Builds the AI Team. 
+    If DB_URL is present -> Enables RAG (Knowledge Base).
+    If missing -> Falls back to Simple Mode (No RAG).
+    """
+    
+    groq_model = Groq(id=GROQ_MODEL_ID)
+    knowledge_base = None
 
-def get_ai_team():
-    global team_instance, knowledge_base_instance
-    if team_instance:
-        return team_instance, knowledge_base_instance
+    # --- TRY CONNECTING TO KNOWLEDGE BASE ---
+    if SUPABASE_DB_URL and OPENAI_API_KEY:
+        try:
+            vector_db = PgVector(
+                db_url=SUPABASE_DB_URL,
+                table_name="agent_knowledge", # Make sure this table exists in Supabase
+                schema="public",
+                embedder=OpenAIEmbedder(api_key=OPENAI_API_KEY),
+                search_type=SearchType.hybrid, 
+            )
+            knowledge_base = Knowledge(vector_db=vector_db)
+            print("SUCCESS: RAG Knowledge Base Connected.")
+        except Exception as e:
+            print(f"WARNING: RAG Failed to load (Check DB URL). Running in Simple Mode. Error: {e}")
+    else:
+        print("NOTICE: Missing SUPABASE_DB_URL or OPENAI_API_KEY. Running in Simple Mode.")
 
-    try:
-        # 1. SETUP RAG
-        if not SUPABASE_DB_URL or not OPENAI_API_KEY:
-            print("Missing Database URL or OpenAI Key")
-            return None, None
+    # --- DEFINE AGENTS ---
+    tech_agent = Agent(
+        name="Tech", role="Developer", model=groq_model,
+        instructions=["Provide code in markdown.", "Debug errors clearly."]
+    )
+    
+    data_agent = Agent(
+        name="Data", role="Analyst", model=groq_model,
+        instructions=["Analyze patterns.", "Suggest visualizations."]
+    )
 
-        vector_db = PgVector(
-            db_url=SUPABASE_DB_URL,
-            table_name="agent_knowledge",
-            schema="public",
-            embedder=OpenAIEmbedder(api_key=OPENAI_API_KEY),
-            search_type=SearchType.hybrid, 
-        )
-        knowledge_base_instance = Knowledge(vector_db=vector_db)
+    docs_agent = Agent(
+        name="Docs", role="Writer", model=groq_model,
+        instructions=["Write clear summaries.", "Use professional formatting."]
+    )
 
-        # 2. DEFINE AGENTS
-        # Note: Pass model object, not string to 'model' param usually
-        groq_model = Groq(id=GROQ_MODEL)
+    # Memory Agent (Only useful if Knowledge Base works)
+    memory_agent = Agent(
+        name="Memory", role="Historian", model=groq_model,
+        knowledge=knowledge_base,
+        search_knowledge=True if knowledge_base else False, 
+        instructions=["Search the knowledge base for past context."]
+    )
 
-        tech_agent = Agent(
-            name="Tech", role="Developer", model=groq_model,
-            instructions=["Provide code in markdown.", "Debug errors clearly."]
-        )
-        data_agent = Agent(
-            name="Data", role="Analyst", model=groq_model,
-            instructions=["Analyze patterns.", "Suggest visualizations."]
-        )
-        docs_agent = Agent(
-            name="Docs", role="Writer", model=groq_model,
-            instructions=["Write clear summaries.", "Use professional formatting."]
-        )
-        
-        # Memory Agent
-        memory_agent = Agent(
-            name="Memory", role="Historian", model=groq_model,
-            knowledge=knowledge_base_instance, 
-            search_knowledge=True, 
-            instructions=["Search the knowledge base for past context."]
-        )
-
-        # 3. DEFINE TEAM
-        team_instance = Team(
-            name="SuperTeam",
-            agents=[tech_agent, data_agent, docs_agent, memory_agent],
-            model=groq_model,
-            instructions=[
-                "You are the team leader.",
-                "Delegate tasks to the appropriate agent based on the user query.",
-                "1. History/Context -> Memory Agent",
-                "2. Code/Debugging -> Tech Agent",
-                "3. Data/Analysis -> Data Agent",
-                "4. Writing/Docs -> Docs Agent",
-                "If unsure, answer directly."
-            ]
-        )
-        return team_instance, knowledge_base_instance
-
-    except Exception as e:
-        print(f"AI Config Error: {e}")
-        return None, None
+    # --- DEFINE TEAM ---
+    team = Team(
+        model=groq_model,
+        members=[tech_agent, data_agent, docs_agent, memory_agent],
+        instructions=[
+            "<role>Orchestrator</role>",
+            "Analyze intent and delegate.",
+            "1. If context/history needed -> Memory Agent",
+            "2. If Code -> Tech Agent",
+            "3. If Analysis -> Data Agent",
+            "4. If Writing -> Docs Agent",
+            "PREFIX response with [[TECH]], [[DATA]], [[DOCS]], [[MEMORY]], or [[TEAM]]."
+        ]
+    )
+    return team, knowledge_base
 
 class ChatRequest(BaseModel):
     message: str
@@ -115,41 +116,43 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 def chat_handler(req: ChatRequest):
-    # Note: 'def' runs in threadpool, preventing blocking of main loop
     try:
-        team, kb = get_ai_team()
-        
-        if not team:
-            raise HTTPException(status_code=500, detail="AI Team configuration failed.")
-
-        # 1. Log User Message (Supabase)
+        # 1. Save User Msg to Supabase (Simple Log)
         if supabase and req.conversation_id:
             supabase.table("chat_messages").insert({
                 "conversation_id": req.conversation_id, "role": "user", "content": req.message
             }).execute()
 
-        # 2. Run AI
-        # Agno's team.run returns a RunResponse object
-        response = team.run(req.message)
+        # 2. Get Context (Simple History Fetch - Works without RAG)
+        history_context = ""
+        if supabase and req.conversation_id:
+            try:
+                hist = supabase.table("chat_messages").select("*").eq("conversation_id", req.conversation_id).order("created_at", desc=True).limit(6).execute()
+                msgs = hist.data[::-1] # Reverse order
+                if msgs:
+                    history_context = "\n<recent_chat_history>\n" + "\n".join([f"{m['role']}: {m['content']}" for m in msgs]) + "\n</recent_chat_history>\n"
+            except: 
+                pass
+
+        # 3. Run AI
+        team, kb = get_team()
         
-        # Extract content safely
+        # If we have a Knowledge Base, we can search it (RAG)
+        # Note: We DON'T load the chat into KB here to avoid pollution
+        
+        full_prompt = f"{history_context}\nUser Query: {req.message}"
+        response = team.run(full_prompt)
         ai_content = response.content if hasattr(response, "content") else str(response)
 
-        # 3. Log AI Response
+        # 4. Save AI Msg to Supabase (Simple Log)
         if supabase and req.conversation_id:
             supabase.table("chat_messages").insert({
                 "conversation_id": req.conversation_id, "role": "ai", "content": ai_content
             }).execute()
-            
-            # OPTIONAL: Add to Knowledge Base (Heavy operation!)
-            # Only do this if you want the AI to "learn" this conversation forever.
-            # Ideally, offload this to a background task.
-            if kb:
-                kb.load_text(f"User: {req.message}\nAI: {ai_content}", upsert=True)
 
         return {"choices": [{"message": {"content": ai_content}}]}
 
     except Exception as e:
-        # Print error to logs for debugging
-        print(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error: {e}")
+        # Return a fallback message if it crashes
+        return {"choices": [{"message": {"content": f"[[TEAM]] System Error: {str(e)}"}}]}
