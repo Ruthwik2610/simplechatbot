@@ -6,6 +6,6 @@ supabase
 openai
 pgvector
 sqlalchemy
-psycopg
+psycopg2-binary
 requests
 groq
