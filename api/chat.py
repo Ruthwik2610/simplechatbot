@@ -69,7 +69,7 @@ else:
         logger.warning("No PostgreSQL URL configured")
 
 # Groq model
-GROQ_MODEL_ID = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL_ID = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # Initialize clients
 supabase = None
