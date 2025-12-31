@@ -177,13 +177,11 @@ def initialize_team():
         model=groq_model,
         members=members,
         instructions=[
-            "Analyze intent and delegate.",
-            "1. If context/history needed -> Memory Agent",
-            "2. If Code -> Tech Agent",
-            "3. If Analysis -> Data Agent",
-            "4. If Writing -> Docs Agent",
-            "PREFIX response with [[TECH]], [[DATA]], [[DOCS]], [[MEMORY]], or [[TEAM]]."
-        ]
+    "You are a router. Route the user query to the single most appropriate agent immediately.",
+    "Do not check Memory unless the user specifically asks about 'previous' or 'last' conversation.",
+    "If the user wants a summary, send directly to Docs Agent.",
+    "Do not add your own commentary, just return the agent's response."
+]
     )
     
     _team_cache = team
