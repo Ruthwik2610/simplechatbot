@@ -191,10 +191,18 @@ ${text}
         const data = await response.json();
         
         if (data.error) {
-            throw new Error(data.error);
+            throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail));
         }
 
-        let aiText = data.choices[0].message.content;
+        // --- SAFEGUARD: PARSING RESPONSE ---
+        // Ensure data.choices exists and has items before accessing [0]
+        let aiText = "No response content received.";
+        if (data.choices && data.choices.length > 0 && data.choices[0].message) {
+            aiText = data.choices[0].message.content;
+        } else if (data.content) {
+            // Fallback if backend sends flat format
+            aiText = data.content;
+        }
 
         // --- ROUTING LOGIC & VISUALIZATION ---
         
@@ -205,20 +213,24 @@ ${text}
             rawTag: "None" 
         };
         
-        // Detect Tags
-        if (aiText.includes('[[TECH]]')) {
+        // Use the agent tag from response if available, otherwise check text
+        const responseTag = data.agent || "";
+        
+        // Helper to check tags
+        const checkTag = (tag) => responseTag.includes(tag) || aiText.includes(`[[${tag}]]`);
+
+        if (checkTag('TECH')) {
             agentIdentity = { name: "Tech Agent", icon: "fa-code", class: "ai-tech", rawTag: "[[TECH]]" };
-            aiText = aiText.replace('[[TECH]]', '').trim();
-        } else if (aiText.includes('[[DATA]]')) {
+        } else if (checkTag('DATA')) {
             agentIdentity = { name: "Data Analyst", icon: "fa-chart-bar", class: "ai-data", rawTag: "[[DATA]]" };
-            aiText = aiText.replace('[[DATA]]', '').trim();
-        } else if (aiText.includes('[[DOCS]]')) {
+        } else if (checkTag('DOCS')) {
             agentIdentity = { name: "Docs Writer", icon: "fa-book", class: "ai-docs", rawTag: "[[DOCS]]" };
-            aiText = aiText.replace('[[DOCS]]', '').trim();
-        } else if (aiText.includes('[[TEAM]]')) {
-             aiText = aiText.replace('[[TEAM]]', '').trim();
-             agentIdentity.rawTag = "[[TEAM]]";
+        } else if (checkTag('MEMORY')) {
+            agentIdentity = { name: "Memory Agent", icon: "fa-history", class: "ai-memory", rawTag: "[[MEMORY]]" };
         }
+
+        // Clean tags from text display
+        aiText = aiText.replace(/\[\[(TECH|DATA|DOCS|MEMORY|TEAM)\]\]/g, "").trim();
 
         // Update loading indicator
         const loadingEl = document.getElementById(loadingId);
@@ -300,29 +312,46 @@ async function streamResponseWithAgent(fullText, agentInfo) {
     
     const contentArea = div.querySelector('.markdown-body');
     let currentText = "";
-    const chars = fullText.split('');
     
-    // Stream characters
-    for (let char of chars) {
-        // Check abort during typing effect
-        if (!isGenerating && !abortController) break; 
+    // Simple streaming simulation
+    const chunkSize = 4; // Add a few chars at a time for speed
+    
+    for (let i = 0; i < fullText.length; i += chunkSize) {
+        if (!isGenerating && !abortController) break;
 
-        currentText += char;
-        contentArea.innerHTML = marked.parse(currentText);
+        currentText += fullText.substring(i, i + chunkSize);
         
-        contentArea.querySelectorAll('pre code').forEach((block) => {
-            if (window.hljs) hljs.highlightElement(block);
-        });
+        // Use marked.parse if available, otherwise plain text
+        if (typeof marked !== 'undefined' && marked.parse) {
+            contentArea.innerHTML = marked.parse(currentText);
+        } else {
+            contentArea.textContent = currentText;
+        }
+        
+        // Highlight code blocks
+        if (window.hljs) {
+            contentArea.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
         
         scrollToBottom();
-        await new Promise(r => setTimeout(r, 5)); 
+        await new Promise(r => setTimeout(r, 10)); 
+    }
+    
+    // Ensure full text is rendered at the end
+    if (typeof marked !== 'undefined' && marked.parse) {
+        contentArea.innerHTML = marked.parse(fullText);
+    }
+    if (window.hljs) {
+        contentArea.querySelectorAll('pre code').forEach((block) => hljs.highlightElement(block));
     }
 }
 
 // --- Helpers ---
 function setupEventListeners() {
     const sendBtn = document.getElementById('sendBtn');
-    const stopBtn = document.getElementById('stopBtn'); // Get Stop Btn
+    const stopBtn = document.getElementById('stopBtn'); 
     const input = document.getElementById('messageInput');
     const newChatBtn = document.getElementById('newChatBtn');
     const clearChatBtn = document.getElementById('clearChatBtn');
@@ -334,7 +363,7 @@ function setupEventListeners() {
     });
 
     if (sendBtn) sendBtn.addEventListener('click', handleSend);
-    if (stopBtn) stopBtn.addEventListener('click', handleStop); // Attach Stop Listener
+    if (stopBtn) stopBtn.addEventListener('click', handleStop);
     
     if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
     if (clearChatBtn) clearChatBtn.addEventListener('click', startNewChat);
