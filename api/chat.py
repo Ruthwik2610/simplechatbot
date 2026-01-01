@@ -11,24 +11,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from supabase import create_client, Client
 
-# --- CUSTOM EMBEDDER FOR VERCEL ---
-# This class replaces the heavy 'fastembed' library.
-# It uses Hugging Face's API to generate embeddings on the fly.
+# --- CUSTOM EMBEDDER (Vercel Compatible) ---
 try:
     from agno.knowledge.embedder.base import Embedder
 except ImportError:
-    # Fallback base class if agno library structure differs in production
     class Embedder:
         def __init__(self):
             self.dimensions = 384
 
 class HuggingFaceServerlessEmbedder(Embedder):
     """
-    Uses Hugging Face Inference API to generate embeddings without
-    loading the model into memory. Perfect for Vercel Serverless.
-    
-    Default Model: BAAI/bge-small-en-v1.5
-    (Matches FastEmbed default, ensuring vector compatibility)
+    Uses Hugging Face Inference API. 
+    Default Model: BAAI/bge-small-en-v1.5 (Matches FastEmbed vectors)
     """
     def __init__(self, model: str = "BAAI/bge-small-en-v1.5", api_key: str = None):
         super().__init__()
@@ -39,7 +33,7 @@ class HuggingFaceServerlessEmbedder(Embedder):
 
     def get_embedding(self, text: str) -> List[float]:
         if not self.api_key:
-            print("WARNING: No HF_API_KEY found. RAG search will fail.")
+            print("WARNING: No HF_API_KEY found.")
             return [0.0] * self.dimensions
             
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -49,26 +43,19 @@ class HuggingFaceServerlessEmbedder(Embedder):
                 print(f"HF Error: {response.text}")
                 return [0.0] * self.dimensions
             
-            # API returns a list of vectors. We take the first one.
             data = response.json()
             if isinstance(data, list) and len(data) > 0:
-                if isinstance(data[0], list):
-                    return data[0] # List of lists
-                elif isinstance(data[0], float):
-                    return data # Single vector
+                if isinstance(data[0], list): return data[0]
+                elif isinstance(data[0], float): return data
             return [0.0] * self.dimensions
         except Exception as e:
             print(f"Embedding Error: {e}")
             return [0.0] * self.dimensions
 
 # --- APP SETUP ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flag to track if AI libraries loaded successfully
 AI_AVAILABLE = False
 try:
     from agno.agent import Agent
@@ -77,34 +64,31 @@ try:
     from agno.vectordb.pgvector import PgVector, SearchType
     from agno.knowledge import Knowledge 
     AI_AVAILABLE = True
-except ImportError as e:
-    logger.error(f"AI Library Import Error: {e}")
+except ImportError:
+    pass
 
-app = FastAPI(title="AI Agent Team API")
+app = FastAPI()
 
-# CORS
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configuration
+# --- CONFIGURATION ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
 POSTGRES_URL = os.environ.get("POSTGRES_URL") 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL_ID = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL_ID = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-# Supabase DB Connection String construction
+# --- FIX 1: AUTO-CORRECT DB URL ---
 SUPABASE_DB_URL = None
 if POSTGRES_URL:
     SUPABASE_DB_URL = POSTGRES_URL
 else:
-    # Fallback construction
     db_user = os.environ.get("POSTGRES_USER", "postgres")
     db_password = os.environ.get("POSTGRES_PASSWORD")
     db_host = os.environ.get("POSTGRES_HOST")
@@ -112,55 +96,43 @@ else:
     if all([db_user, db_password, db_host, db_name]):
         SUPABASE_DB_URL = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
 
-# Initialize Supabase Client (for Chat History logging)
+# CRITICAL FIX: SQLAlchemy requires 'postgresql://', NOT 'postgres://'
+if SUPABASE_DB_URL and SUPABASE_DB_URL.startswith("postgres://"):
+    SUPABASE_DB_URL = SUPABASE_DB_URL.replace("postgres://", "postgresql://", 1)
+
+# Initialize Supabase Client
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        logger.error(f"Failed to initialize Supabase: {e}")
+        logger.error(f"Supabase Client Error: {e}")
 
-# Global Cache & ThreadPool
 _team_cache = None
 executor = ThreadPoolExecutor(max_workers=5)
 
-# --- MODELS ---
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
-    
-    @field_validator('message')
-    @classmethod
-    def validate_message(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError('Message cannot be empty')
-        return v.strip()
 
 class ChatResponse(BaseModel):
     content: str
     agent: str = "TEAM"
 
-# --- CORE LOGIC ---
 def initialize_team():
-    """Initialize team with Serverless-compatible Knowledge Base."""
     global _team_cache
-    
-    if not AI_AVAILABLE:
-        raise RuntimeError("AI libraries are not installed.")
-
-    if _team_cache is not None:
-        return _team_cache
-    
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is required")
+    if not AI_AVAILABLE: raise RuntimeError("AI libraries missing")
+    if _team_cache: return _team_cache
     
     groq_model = Groq(id=GROQ_MODEL_ID, api_key=GROQ_API_KEY)
-    knowledge_base = None
     
-    # Initialize knowledge base (Read-Only via Hugging Face Embeddings)
+    knowledge_base = None
+    has_kb = False
+
+    # Initialize Knowledge Base
     if SUPABASE_DB_URL:
         try:
-            # Use our custom Serverless Embedder (384 dim)
+            logger.info("Attempting to connect to Knowledge Base...")
             embedder = HuggingFaceServerlessEmbedder()
             
             vector_db = PgVector(
@@ -172,27 +144,36 @@ def initialize_team():
             )
             
             knowledge_base = Knowledge(vector_db=vector_db)
+            has_kb = True
+            logger.info("✅ Knowledge Base Connected Successfully")
             
         except Exception as e:
-            logger.warning(f"Knowledge Base initialization failed: {e}")
-    
-    # Instructions
-    base_instructions = [
-        "You are an expert in your field.",
-        "Search the knowledge base using your tools to find relevant context.",
-        "If the information is found in the knowledge base, answer the user's question accurately.",
-        "CRITICAL: If the information is NOT found in the knowledge base or your internal knowledge, you MUST respond with: 'The information requested is out of scope.'",
-        "Do not hallucinate or make up facts."
-    ]
+            logger.error(f"❌ Knowledge Base Initialization FAILED: {e}")
+            # We continue without KB, but flags below will handle it
 
-    # Agents
+    # --- FIX 2: DYNAMIC INSTRUCTIONS ---
+    # Only tell the agent to search if the KB actually loaded
+    if has_kb:
+        instructions = [
+            "Search the knowledge base for context.",
+            "If information is not found in the knowledge base, strictly reply: 'The information requested is out of scope.'",
+            "Do not hallucinate."
+        ]
+    else:
+        instructions = [
+            "NOTICE: The knowledge base is currently unavailable.",
+            "Inform the user you cannot access internal documentation right now.",
+            "Do NOT attempt to use any search tools."
+        ]
+
+    # Initialize Agents with conditional search_knowledge flag
     tech_agent = Agent(
         name="Tech",
         role="Developer Support",
         model=groq_model,
         knowledge=knowledge_base,
-        search_knowledge=True,
-        instructions=base_instructions + ["Focus on code, architecture, and debugging."]
+        search_knowledge=has_kb, # CRITICAL: Only True if KB exists
+        instructions=instructions
     )
     
     data_agent = Agent(
@@ -200,8 +181,8 @@ def initialize_team():
         role="Data Analyst",
         model=groq_model,
         knowledge=knowledge_base,
-        search_knowledge=True,
-        instructions=base_instructions + ["Focus on database schemas, SQL, and data patterns."]
+        search_knowledge=has_kb,
+        instructions=instructions
     )
     
     docs_agent = Agent(
@@ -209,83 +190,59 @@ def initialize_team():
         role="Technical Writer",
         model=groq_model,
         knowledge=knowledge_base,
-        search_knowledge=True,
-        instructions=base_instructions + ["Focus on documentation summaries and operational scope."]
+        search_knowledge=has_kb,
+        instructions=instructions
     )
     
-    # Supervisor
     team = Team(
         model=groq_model,
         members=[tech_agent, data_agent, docs_agent],
-        instructions=[
-            "You are a Supervisor. Analyze the user's query intent.",
-            "Delegate the task to the single most appropriate agent (Tech, Data, or Docs).",
-            "Do not answer the question yourself. Let the agent search the knowledge base.",
-            "Return the agent's response directly."
-        ]
+        instructions=["Delegate to the most appropriate agent based on the user query."]
     )
     
     _team_cache = team
     return team
 
-def extract_agent_tag(content: str) -> tuple[str, str]:
+def extract_agent_tag(content: str):
     match = re.search(r"\[\[(TECH|DATA|DOCS|MEMORY|TEAM)\]\]", content)
     tag = "TEAM"
-    cleaned_content = content
+    cleaned = content
     if match:
         tag = match.group(1)
-        cleaned_content = content.replace(match.group(0), "").strip()
-    return tag, cleaned_content
-
-# --- ENDPOINTS ---
-@app.get("/health")
-async def health_check():
-    team_status = "active" if _team_cache else "uninitialized"
-    return {"status": "healthy", "service": "AI Team API"}
+        cleaned = content.replace(match.group(0), "").strip()
+    return tag, cleaned
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_handler(req: ChatRequest):
-    if not AI_AVAILABLE:
-        raise HTTPException(status_code=503, detail="AI services unavailable.")
-
+    if not AI_AVAILABLE: raise HTTPException(status_code=503, detail="AI unavailable")
+    
     try:
         loop = asyncio.get_event_loop()
         team = await loop.run_in_executor(executor, initialize_team)
         
-        # 1. Log User Message (Async, optional)
+        # 1. Log User
         if supabase and req.conversation_id:
             try:
-                supabase.table("chat_messages").insert({
-                    "conversation_id": req.conversation_id,
-                    "role": "user",
-                    "content": req.message[:1000]
-                }).execute()
-            except Exception as e:
-                logger.warning(f"Supabase logging error: {e}")
+                supabase.table("chat_messages").insert({"conversation_id": req.conversation_id, "role": "user", "content": req.message[:1000]}).execute()
+            except: pass
 
-        # 2. Run AI (No History Injection, just current query)
-        def run_agent_sync():
-            return team.run(req.message)
+        # 2. Run Model
+        def run_sync(): return team.run(req.message)
+        response = await loop.run_in_executor(executor, run_sync)
         
-        response = await loop.run_in_executor(executor, run_agent_sync)
+        # 3. Process
+        raw = response.content if hasattr(response, "content") else str(response)
+        tag, clean = extract_agent_tag(raw)
         
-        # 3. Process Response
-        raw_content = response.content if hasattr(response, "content") else str(response)
-        agent_tag, clean_content = extract_agent_tag(raw_content)
-        
-        # 4. Log AI Response (Async, optional)
+        # 4. Log AI
         if supabase and req.conversation_id:
             try:
-                supabase.table("chat_messages").insert({
-                    "conversation_id": req.conversation_id,
-                    "role": "ai",
-                    "content": clean_content[:2000]
-                }).execute()
-            except Exception as e:
-                logger.warning(f"Failed to log AI response: {e}")
+                supabase.table("chat_messages").insert({"conversation_id": req.conversation_id, "role": "ai", "content": clean[:2000]}).execute()
+            except: pass
 
-        return ChatResponse(content=clean_content, agent=agent_tag)
-
+        return ChatResponse(content=clean, agent=tag)
+        
     except Exception as e:
-        logger.error(f"Chat error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Chat failed: {e}")
+        # Return a clean error to the frontend instead of 500 crash
+        return ChatResponse(content=f"System Error: {str(e)}", agent="ERROR")
