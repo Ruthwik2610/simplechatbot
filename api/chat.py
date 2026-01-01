@@ -144,23 +144,34 @@ def initialize_team():
     groq_model = Groq(id=GROQ_MODEL, api_key=GROQ_API_KEY)
     knowledge_base = None
 
-    # Connect to Vector DB using the Cleaned URL
+    # Connect to Vector DB using the Cleaned URL (use a local variable, don't mutate the global)
     if SUPABASE_DB_URL:
         try:
             logger.info("Initializing PgVector...")
             embedder = HuggingFaceServerlessEmbedder()
-            SUPABASE_DB_URL = SUPABASE_DB_URL.split("&supa=")[0]
-            
-            # Pass the validated/cleaned URL here
-            vector_db = PgVector(
-                db_url=SUPABASE_DB_URL,
-                table_name="agent_knowledge",
-                schema="public",
-                embedder=embedder,
-                search_type=SearchType.hybrid,
-            )
-            knowledge_base = Knowledge(vector_db=vector_db)
-            logger.info("✅ Knowledge Base Connected")
+
+            # use a local copy so we don't trigger Python's 'unbound local' scoping rules
+            db_url = SUPABASE_DB_URL
+            # strip Supabase pooler metadata that psycopg2/libpq doesn't accept
+            if db_url and "&supa=" in db_url:
+                logger.info("Stripping Supabase pooler metadata from DB URL")
+                db_url = db_url.split("&supa=")[0]
+
+            # Only initialize PgVector if we have a valid URL (truthy string)
+            if db_url:
+                vector_db = PgVector(
+                    db_url=db_url,
+                    table_name="agent_knowledge",
+                    schema="public",
+                    embedder=embedder,
+                    search_type=SearchType.hybrid,
+                )
+                knowledge_base = Knowledge(vector_db=vector_db)
+                logger.info("✅ Knowledge Base Connected")
+            else:
+                logger.warning("No DB URL available after cleaning; skipping KB initialization")
+                knowledge_base = None
+
         except Exception as e:
             logger.error(f"KB Connection Failed: {e}")
             knowledge_base = None
@@ -207,6 +218,7 @@ def initialize_team():
     
     _team_cache = team
     return team
+am
 
 def extract_agent_tag(content: str):
     match = re.search(r"\[\[(TECH|DATA|DOCS|MEMORY|TEAM)\]\]", content)
