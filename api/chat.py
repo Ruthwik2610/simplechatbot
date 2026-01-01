@@ -218,7 +218,6 @@ def initialize_team():
     
     _team_cache = team
     return team
-am
 
 def extract_agent_tag(content: str):
     match = re.search(r"\[\[(TECH|DATA|DOCS|MEMORY|TEAM)\]\]", content)
