@@ -17,7 +17,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NexusFlow")
 
 # --- 2. CUSTOM EMBEDDER (VERCEL COMPATIBLE) ---
-# Uses Hugging Face API to generate 384-dim vectors (matches FastEmbed default)
 try:
     from agno.knowledge.embedder.base import Embedder
 except ImportError:
@@ -38,7 +37,6 @@ class HuggingFaceServerlessEmbedder(Embedder):
             res = requests.post(self.api_url, headers={"Authorization": f"Bearer {self.api_key}"}, json={"inputs": text})
             if res.status_code != 200: return [0.0] * self.dimensions
             data = res.json()
-            # Handle HF API response variations (list of lists vs single list)
             if isinstance(data, list) and len(data) > 0:
                 return data[0] if isinstance(data[0], list) else data
             return [0.0] * self.dimensions
@@ -59,7 +57,6 @@ except ImportError:
 
 app = FastAPI()
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -68,30 +65,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 4. ROBUST ENV VAR LOADING ---
-# strip() removes hidden spaces that cause connection errors
+# --- 4. ROBUST CONNECTION STRING FIXER ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 
-# FIX: Construct Database URL safely (Handles special chars in password)
-POSTGRES_URL = os.environ.get("POSTGRES_URL", "").strip()
+# Fetch URL
+POSTGRES_URL = os.environ.get("POSTGRES_URL", "")
+
+SUPABASE_DB_URL = None
+
 if POSTGRES_URL:
-    SUPABASE_DB_URL = POSTGRES_URL.replace("postgres://", "postgresql://", 1)
+    # NUCLEAR FIX: Remove ALL whitespace from the string. 
+    # This fixes the "invalid connection option 'supa'" error caused by spaces.
+    clean_url = "".join(POSTGRES_URL.split())
+    # Fix protocol
+    SUPABASE_DB_URL = clean_url.replace("postgres://", "postgresql://", 1)
 else:
+    # Manual Construction Fallback
     db_user = os.environ.get("POSTGRES_USER", "postgres").strip()
     db_pass = urllib.parse.quote_plus(os.environ.get("POSTGRES_PASSWORD", "").strip())
     db_host = os.environ.get("POSTGRES_HOST", "").strip()
     db_name = os.environ.get("POSTGRES_DATABASE", "postgres").strip()
     
-    SUPABASE_DB_URL = None
     if db_host:
         port = "5432"
         if ":" in db_host: db_host, port = db_host.split(":")
         SUPABASE_DB_URL = f"postgresql://{db_user}:{db_pass}@{db_host}:{port}/{db_name}"
 
-# Initialize Supabase (for chat logs)
+# Ensure SSL mode is set if using Supabase Pooler
+if SUPABASE_DB_URL and "sslmode" not in SUPABASE_DB_URL:
+    separator = "&" if "?" in SUPABASE_DB_URL else "?"
+    SUPABASE_DB_URL += f"{separator}sslmode=require"
+
+# Initialize Supabase HTTP Client
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY:
     try: supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -120,6 +128,7 @@ def initialize_team():
     # Connect to Vector DB
     if SUPABASE_DB_URL:
         try:
+            logger.info(f"Connecting to DB...") 
             embedder = HuggingFaceServerlessEmbedder()
             vector_db = PgVector(
                 db_url=SUPABASE_DB_URL,
@@ -131,17 +140,25 @@ def initialize_team():
             knowledge_base = Knowledge(vector_db=vector_db)
             logger.info("✅ Knowledge Base Connected")
         except Exception as e:
+            # Log the error but DO NOT crash the app. Allow chat to work without KB.
             logger.error(f"KB Connection Failed: {e}")
-            # We proceed without KB (Agents will just use LLM knowledge)
+            knowledge_base = None
 
-    instructions = [
-        "Search the knowledge base for context.",
-        "If information is NOT found in the KB, strictly reply: 'The information requested is out of scope.'",
-        "Do not hallucinate."
-    ]
+    # Dynamic Instructions
+    if knowledge_base:
+        instructions = [
+            "Search the knowledge base for context.",
+            "If information is NOT found in the KB, strictly reply: 'The information requested is out of scope.'",
+            "Do not hallucinate."
+        ]
+    else:
+        instructions = [
+            "NOTICE: The knowledge base is currently unavailable (Database Error).",
+            "Answer generic questions if possible, but inform the user you cannot check documentation."
+        ]
 
-    # Create Agents
-    # search_knowledge=True only works if knowledge_base is not None
+    # Agents
+    # search_knowledge must be False if knowledge_base is None to prevent "tool_use_failed" errors
     tech_agent = Agent(
         name="Tech",
         role="Developer Support",
@@ -198,11 +215,13 @@ async def chat_handler(req: ChatRequest):
         
         # Log User
         if supabase and req.conversation_id:
-            supabase.table("chat_messages").insert({
-                "conversation_id": req.conversation_id,
-                "role": "user",
-                "content": req.message[:1000]
-            }).execute()
+            try:
+                supabase.table("chat_messages").insert({
+                    "conversation_id": req.conversation_id,
+                    "role": "user",
+                    "content": req.message[:1000]
+                }).execute()
+            except: pass
 
         # Run AI
         def run_sync(): return team.run(req.message)
@@ -214,11 +233,13 @@ async def chat_handler(req: ChatRequest):
         
         # Log AI
         if supabase and req.conversation_id:
-            supabase.table("chat_messages").insert({
-                "conversation_id": req.conversation_id,
-                "role": "ai",
-                "content": clean[:2000]
-            }).execute()
+            try:
+                supabase.table("chat_messages").insert({
+                    "conversation_id": req.conversation_id,
+                    "role": "ai",
+                    "content": clean[:2000]
+                }).execute()
+            except: pass
 
         return ChatResponse(content=clean, agent=tag)
 
