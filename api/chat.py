@@ -12,11 +12,41 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from supabase import create_client, Client
 
-# --- 1. CONFIGURATION & LOGGING ---
+# --- 1. LOGGING & SETUP ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NexusFlow")
 
-# --- 2. CUSTOM EMBEDDER (VERCEL COMPATIBLE) ---
+# --- 2. VALIDATION HELPER (YOUR CODE) ---
+def validate_postgres_url(url: Optional[str]) -> str:
+    """
+    Cleans and prepares the Database URL for SQLAlchemy/Agno.
+    """
+    if not url: return None
+    
+    # 1. Strip whitespace (Fixes 'invalid dsn' error)
+    url = url.strip()
+    
+    # 2. Check for internal spaces
+    if " " in url:
+        logger.error(f"Invalid POSTGRES_URL: Contains spaces. URL: {url[:10]}...")
+        return None
+
+    # 3. Fix Protocol for SQLAlchemy (postgres:// -> postgresql+psycopg2://)
+    # Note: Agno uses SQLAlchemy, so this explicit driver is safer.
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif not url.startswith("postgresql"):
+        # If it doesn't start with postgres/postgresql, it might be invalid
+        logger.warning("POSTGRES_URL does not start with postgres:// or postgresql://")
+
+    # 4. Ensure SSL (Required for Supabase)
+    if "sslmode=" not in url:
+        separator = "&" if "?" in url else "?"
+        url = f"{url}{separator}sslmode=require"
+        
+    return url
+
+# --- 3. CUSTOM EMBEDDER (VERCEL COMPATIBLE) ---
 try:
     from agno.knowledge.embedder.base import Embedder
 except ImportError:
@@ -43,7 +73,7 @@ class HuggingFaceServerlessEmbedder(Embedder):
         except:
             return [0.0] * self.dimensions
 
-# --- 3. AGNO AI SETUP ---
+# --- 4. AGNO AI SETUP ---
 try:
     from agno.agent import Agent
     from agno.team import Team
@@ -65,25 +95,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 4. ROBUST CONNECTION STRING FIXER ---
+# --- 5. ENV VARS & DB SETUP ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 
-# Fetch URL
-POSTGRES_URL = os.environ.get("POSTGRES_URL", "")
+# Initialize Supabase REST Client
+supabase: Optional[Client] = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try: supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except: pass
 
-SUPABASE_DB_URL = None
+# Initialize Database URL using your robust validator
+raw_pg_url = os.environ.get("POSTGRES_URL")
+SUPABASE_DB_URL = validate_postgres_url(raw_pg_url)
 
-if POSTGRES_URL:
-    # NUCLEAR FIX: Remove ALL whitespace from the string. 
-    # This fixes the "invalid connection option 'supa'" error caused by spaces.
-    clean_url = "".join(POSTGRES_URL.split())
-    # Fix protocol
-    SUPABASE_DB_URL = clean_url.replace("postgres://", "postgresql://", 1)
-else:
-    # Manual Construction Fallback
+# Fallback construction if POSTGRES_URL is missing but parts exist
+if not SUPABASE_DB_URL:
     db_user = os.environ.get("POSTGRES_USER", "postgres").strip()
     db_pass = urllib.parse.quote_plus(os.environ.get("POSTGRES_PASSWORD", "").strip())
     db_host = os.environ.get("POSTGRES_HOST", "").strip()
@@ -92,18 +121,8 @@ else:
     if db_host:
         port = "5432"
         if ":" in db_host: db_host, port = db_host.split(":")
-        SUPABASE_DB_URL = f"postgresql://{db_user}:{db_pass}@{db_host}:{port}/{db_name}"
-
-# Ensure SSL mode is set if using Supabase Pooler
-if SUPABASE_DB_URL and "sslmode" not in SUPABASE_DB_URL:
-    separator = "&" if "?" in SUPABASE_DB_URL else "?"
-    SUPABASE_DB_URL += f"{separator}sslmode=require"
-
-# Initialize Supabase HTTP Client
-supabase: Optional[Client] = None
-if SUPABASE_URL and SUPABASE_KEY:
-    try: supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except: pass
+        constructed_url = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{port}/{db_name}"
+        SUPABASE_DB_URL = validate_postgres_url(constructed_url)
 
 _team_cache = None
 executor = ThreadPoolExecutor(max_workers=5)
@@ -116,7 +135,7 @@ class ChatResponse(BaseModel):
     content: str
     agent: str = "TEAM"
 
-# --- 5. TEAM INITIALIZATION ---
+# --- 6. TEAM LOGIC ---
 def initialize_team():
     global _team_cache
     if _team_cache: return _team_cache
@@ -125,11 +144,13 @@ def initialize_team():
     groq_model = Groq(id=GROQ_MODEL, api_key=GROQ_API_KEY)
     knowledge_base = None
 
-    # Connect to Vector DB
+    # Connect to Vector DB using the Cleaned URL
     if SUPABASE_DB_URL:
         try:
-            logger.info(f"Connecting to DB...") 
+            logger.info("Initializing PgVector...")
             embedder = HuggingFaceServerlessEmbedder()
+            
+            # Pass the validated/cleaned URL here
             vector_db = PgVector(
                 db_url=SUPABASE_DB_URL,
                 table_name="agent_knowledge",
@@ -140,25 +161,16 @@ def initialize_team():
             knowledge_base = Knowledge(vector_db=vector_db)
             logger.info("✅ Knowledge Base Connected")
         except Exception as e:
-            # Log the error but DO NOT crash the app. Allow chat to work without KB.
             logger.error(f"KB Connection Failed: {e}")
             knowledge_base = None
 
-    # Dynamic Instructions
-    if knowledge_base:
-        instructions = [
-            "Search the knowledge base for context.",
-            "If information is NOT found in the KB, strictly reply: 'The information requested is out of scope.'",
-            "Do not hallucinate."
-        ]
-    else:
-        instructions = [
-            "NOTICE: The knowledge base is currently unavailable (Database Error).",
-            "Answer generic questions if possible, but inform the user you cannot check documentation."
-        ]
+    instructions = [
+        "Search the knowledge base for context.",
+        "If information is NOT found in the KB, strictly reply: 'The information requested is out of scope.'",
+        "Do not hallucinate."
+    ]
 
-    # Agents
-    # search_knowledge must be False if knowledge_base is None to prevent "tool_use_failed" errors
+    # Create Agents
     tech_agent = Agent(
         name="Tech",
         role="Developer Support",
@@ -204,7 +216,7 @@ def extract_agent_tag(content: str):
         cleaned = content.replace(match.group(0), "").strip()
     return tag, cleaned
 
-# --- 6. ENDPOINT ---
+# --- 7. ENDPOINT ---
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_handler(req: ChatRequest):
     if not AI_AVAILABLE: raise HTTPException(503, "AI Services Unavailable")
