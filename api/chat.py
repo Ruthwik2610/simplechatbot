@@ -149,6 +149,7 @@ def initialize_team():
         try:
             logger.info("Initializing PgVector...")
             embedder = HuggingFaceServerlessEmbedder()
+            SUPABASE_DB_URL = SUPABASE_DB_URL.split("&supa=")[0]
             
             # Pass the validated/cleaned URL here
             vector_db = PgVector(
