@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Agent Chat</title>
+    <title>IT Service Desk - Multi-Agent</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
     <link rel="stylesheet" href="chat.css">
@@ -13,20 +13,21 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <button class="new-chat-btn" id="newChatBtn">
-                    <i class="fas fa-plus"></i> <span>New Chat</span>
+                    <i class="fas fa-plus"></i> <span>New Ticket</span>
                 </button>
             </div>
             <div class="search-wrapper">
                 <i class="fas fa-search"></i>
-                <input type="text" placeholder="Search...">
+                <input type="text" placeholder="Search tickets...">
             </div>
             <div class="history-list custom-scroll" id="historyList"></div>
             <div class="user-profile">
                 <div class="avatar">
-                    <img src="https://ui-avatars.com/api/?name=User&background=EBEBEB&color=2D2D2D" alt="User">
+                    <img src="https://ui-avatars.com/api/?name=Employee&background=EBEBEB&color=2D2D2D" alt="User">
                 </div>
                 <div class="user-info">
-                    <h3>My Account</h3>
+                    <h3>Employee Access</h3>
+                    <span class="status-text">Logged In</span>
                 </div>
                 <button class="logout-btn" id="logoutBtn"><i class="fas fa-sign-out-alt"></i></button>
             </div>
@@ -35,7 +36,7 @@
         <main class="chat-area">
             <header class="chat-header">
                 <div class="model-badge">
-                    <i class="fas fa-network-wired"></i> Multi-Agent Team
+                    <i class="fas fa-network-wired"></i> IT Service Desk (ServiceNow)
                 </div>
                 <div class="header-actions">
                     <div class="debug-toggle-wrapper">
@@ -52,23 +53,27 @@
             <div class="messages-container custom-scroll" id="messagesArea">
                 <div class="empty-state" id="emptyState">
                     <div class="logo-wrapper">
-                        <i class="fas fa-robot"></i>
+                        <i class="fas fa-headset"></i>
                     </div>
-                    <h2>How can the team help?</h2>
-                    <p style="color:#666; margin-bottom:20px;">The AI will automatically select the best expert for your task.</p>
+                    <h2>How can IT support you today?</h2>
+                    <p style="color:#666; margin-bottom:20px;">Describe your issue, and the Supervisor will route you to the correct specialist.</p>
                     
                     <div class="suggestion-grid">
-                        <div class="suggestion-card" onclick="usePrompt('My python loop is stuck infinite. How do I fix it?')">
-                            <i class="fas fa-bug" style="color:#DA7756"></i>
-                            <p>Debug Broken Code</p>
+                        <div class="suggestion-card" onclick="usePrompt('I am getting a connection error on the US-East Gateway. Can you check the logs?')">
+                            <i class="fas fa-server" style="color:#1565C0"></i>
+                            <p>Report VPN Outage</p>
                         </div>
-                        <div class="suggestion-card" onclick="usePrompt('Analyze the trend in this sales data.')">
-                            <i class="fas fa-chart-line" style="color:#2E7D32"></i>
-                            <p>Analyze Data Trends</p>
+                        <div class="suggestion-card" onclick="usePrompt('My account is locked. My Employee ID is E-101.')">
+                            <i class="fas fa-unlock-alt" style="color:#2E7D32"></i>
+                            <p>Unlock Account</p>
                         </div>
-                        <div class="suggestion-card" onclick="usePrompt('Generate a README.md for a React app.')">
-                            <i class="fas fa-file-alt" style="color:#F57C00"></i>
-                            <p>Write Documentation</p>
+                        <div class="suggestion-card" onclick="usePrompt('I am Customer C-501. I want a refund for my Basic Plan.')">
+                            <i class="fas fa-file-invoice-dollar" style="color:#F57F17"></i>
+                            <p>Request Billing Refund</p>
+                        </div>
+                        <div class="suggestion-card" onclick="usePrompt('My Outlook is crashing constantly.')">
+                            <i class="fas fa-laptop-medical" style="color:#DA7756"></i>
+                            <p>Software Support</p>
                         </div>
                     </div>
                 </div>
@@ -79,7 +84,7 @@
                 <div class="message-input-wrapper">
                     <input type="file" id="fileInput" hidden>
                     <button class="attachment-btn" id="attachmentBtn"><i class="fas fa-paperclip"></i></button>
-                    <textarea id="messageInput" placeholder="Ask anything... (e.g., 'Fix my code')" rows="1"></textarea>
+                    <textarea id="messageInput" placeholder="Describe your IT issue..." rows="1"></textarea>
                     <button class="stop-btn" id="stopBtn" style="display: none;"><i class="fas fa-square"></i></button>
                     <button class="send-btn" id="sendBtn"><i class="fas fa-arrow-up"></i></button>
                 </div>
