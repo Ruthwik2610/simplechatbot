@@ -9,41 +9,23 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from supabase import create_client, Client
 
 # --- 1. LOGGING & SETUP ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NexusFlow")
 
-# --- 2. VALIDATION HELPER (YOUR CODE) ---
+# --- 2. VALIDATION HELPER ---
 def validate_postgres_url(url: Optional[str]) -> str:
-    """
-    Cleans and prepares the Database URL for SQLAlchemy/Agno.
-    """
     if not url: return None
-    
-    # 1. Strip whitespace (Fixes 'invalid dsn' error)
     url = url.strip()
-    
-    # 2. Check for internal spaces
-    if " " in url:
-        logger.error(f"Invalid POSTGRES_URL: Contains spaces. URL: {url[:10]}...")
-        return None
-
-    # 3. Fix Protocol for SQLAlchemy (postgres:// -> postgresql+psycopg2://)
-    # Note: Agno uses SQLAlchemy, so this explicit driver is safer.
+    if " " in url: return None
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
-    elif not url.startswith("postgresql"):
-        # If it doesn't start with postgres/postgresql, it might be invalid
-        logger.warning("POSTGRES_URL does not start with postgres:// or postgresql://")
-
-    # 4. Ensure SSL (Required for Supabase)
     if "sslmode=" not in url:
         separator = "&" if "?" in url else "?"
         url = f"{url}{separator}sslmode=require"
-        
     return url
 
 # --- 3. CUSTOM EMBEDDER (VERCEL COMPATIBLE) ---
@@ -107,22 +89,9 @@ if SUPABASE_URL and SUPABASE_KEY:
     try: supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except: pass
 
-# Initialize Database URL using your robust validator
+# Initialize Database URL
 raw_pg_url = os.environ.get("POSTGRES_URL")
 SUPABASE_DB_URL = validate_postgres_url(raw_pg_url)
-
-# Fallback construction if POSTGRES_URL is missing but parts exist
-if not SUPABASE_DB_URL:
-    db_user = os.environ.get("POSTGRES_USER", "postgres").strip()
-    db_pass = urllib.parse.quote_plus(os.environ.get("POSTGRES_PASSWORD", "").strip())
-    db_host = os.environ.get("POSTGRES_HOST", "").strip()
-    db_name = os.environ.get("POSTGRES_DATABASE", "postgres").strip()
-    
-    if db_host:
-        port = "5432"
-        if ":" in db_host: db_host, port = db_host.split(":")
-        constructed_url = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{port}/{db_name}"
-        SUPABASE_DB_URL = validate_postgres_url(constructed_url)
 
 _team_cache = None
 executor = ThreadPoolExecutor(max_workers=5)
@@ -135,7 +104,22 @@ class ChatResponse(BaseModel):
     content: str
     agent: str = "TEAM"
 
-# --- 6. TEAM LOGIC ---
+# --- 6. ACTION TOOLS (The "Hands") ---
+# These simulate the write-actions described in PDF pages 3-5.
+
+def run_diagnostics_action(system: str) -> str:
+    """Simulates running a diagnostic check on a system (VPN, Gateway, etc)."""
+    return f"DIAGNOSTIC COMPLETE: {system} is responding. Latency: 45ms. Status: Online."
+
+def unlock_account_action(username: str) -> str:
+    """Action to unlock a user account in the system."""
+    return f"SUCCESS: Account for '{username}' has been UNLOCKED. Notification sent to user."
+
+def process_refund_action(invoice_id: str) -> str:
+    """Action to process a refund for a specific invoice."""
+    return f"SUCCESS: Refund processed for Invoice {invoice_id}. Amount will appear in 3-5 days."
+
+# --- 7. TEAM LOGIC ---
 def initialize_team():
     global _team_cache
     if _team_cache: return _team_cache
@@ -144,24 +128,20 @@ def initialize_team():
     groq_model = Groq(id=GROQ_MODEL, api_key=GROQ_API_KEY)
     knowledge_base = None
 
-    # Connect to Vector DB using the Cleaned URL (use a local variable, don't mutate the global)
+    # Connect to Knowledge Base (Your Uploaded CSV Data)
     if SUPABASE_DB_URL:
         try:
             logger.info("Initializing PgVector...")
             embedder = HuggingFaceServerlessEmbedder()
-
-            # use a local copy so we don't trigger Python's 'unbound local' scoping rules
+            
             db_url = SUPABASE_DB_URL
-            # strip Supabase pooler metadata that psycopg2/libpq doesn't accept
             if db_url and "&supa=" in db_url:
-                logger.info("Stripping Supabase pooler metadata from DB URL")
                 db_url = db_url.split("&supa=")[0]
 
-            # Only initialize PgVector if we have a valid URL (truthy string)
             if db_url:
                 vector_db = PgVector(
                     db_url=db_url,
-                    table_name="agent_knowledge",
+                    table_name="agent_knowledge", # This matches your ingestion script
                     schema="public",
                     embedder=embedder,
                     search_type=SearchType.hybrid,
@@ -169,58 +149,93 @@ def initialize_team():
                 knowledge_base = Knowledge(vector_db=vector_db)
                 logger.info("✅ Knowledge Base Connected")
             else:
-                logger.warning("No DB URL available after cleaning; skipping KB initialization")
                 knowledge_base = None
 
         except Exception as e:
             logger.error(f"KB Connection Failed: {e}")
             knowledge_base = None
 
-    instructions = [
-        "Search the knowledge base for context.",
-        "If information is NOT found in the KB, strictly reply: 'The information requested is out of scope.'",
-        "Do not hallucinate."
-    ]
+    # --- DEFINE SPECIALIZED AGENTS (Matching PDF Architecture) ---
 
-    # Create Agents
+    # 1. Technical Support Agent ("The Troubleshooter")
+    # Reference: PDF Page 2 & 3
     tech_agent = Agent(
-        name="Tech",
-        role="Developer Support",
+        name="Technical Support",
+        role="IT Support Specialist",
         model=groq_model,
         knowledge=knowledge_base,
-        search_knowledge=bool(knowledge_base),
-        instructions=instructions
+        search_knowledge=True, # MUST search for "System Log" entries
+        tools=[run_diagnostics_action],
+        instructions=[
+            "You are the Tier 1 IT Support technician.",
+            "If a user reports an error, FIRST search the knowledge base for 'System Log' or 'Error Code' to find recent server issues.",
+            "Use the 'run_diagnostics_action' tool only if no known outage is found in the logs.",
+            "Append [[SUPPORT]] to your final response."
+        ]
     )
     
-    data_agent = Agent(
-        name="Data",
-        role="Data Analyst",
+    # 2. Account & Access Agent ("The Gatekeeper")
+    # Reference: PDF Page 3 & 4
+    access_agent = Agent(
+        name="Access Control",
+        role="IAM Administrator",
         model=groq_model,
         knowledge=knowledge_base,
-        search_knowledge=bool(knowledge_base),
-        instructions=instructions
+        search_knowledge=True, # MUST search for "User Record"
+        tools=[unlock_account_action],
+        instructions=[
+            "You handle account locks and passwords.",
+            "You are STRICT about identity verification.",
+            "If a user asks to unlock an account:",
+            "1. Search the knowledge base for 'User Directory Record' or the user's name.",
+            "2. Verify if the account status is actually 'Locked'.",
+            "3. Ask the user for their Employee ID.",
+            "4. compare the provided ID with the 'ID' found in the knowledge base.",
+            "5. ONLY if they match, call 'unlock_account_action'.",
+            "Append [[ACCESS]] to your final response."
+        ]
     )
     
-    docs_agent = Agent(
-        name="Docs",
-        role="Technical Writer",
+    # 3. Billing & Subscription Agent ("The Finance Clerk")
+    # Reference: PDF Page 4 & 5
+    billing_agent = Agent(
+        name="Billing",
+        role="Finance Specialist",
         model=groq_model,
         knowledge=knowledge_base,
-        search_knowledge=bool(knowledge_base),
-        instructions=instructions
+        search_knowledge=True, # MUST search for "Financial Record"
+        tools=[process_refund_action],
+        instructions=[
+            "You handle refunds and invoices.",
+            "Refunds are strictly limited to 30 days from the 'Last Payment Date'.",
+            "If a user requests a refund:",
+            "1. Search the knowledge base for 'Financial Record' or 'Invoice' linked to the user.",
+            "2. Check the 'Last Payment Date' and calculate if it is within 30 days.",
+            "3. If >30 days, politely deny the request citing policy.",
+            "4. If <30 days, call 'process_refund_action'.",
+            "Append [[BILLING]] to your final response."
+        ]
     )
     
+    # Supervisor (Orchestrator)
     team = Team(
         model=groq_model,
-        members=[tech_agent, data_agent, docs_agent],
-        instructions=["Delegate to the most appropriate agent based on the user query."]
+        members=[tech_agent, access_agent, billing_agent],
+        instructions=[
+            "You are the IT Service Supervisor.",
+            "Route the user's ticket to the correct specialist based on their request.",
+            "Hardware/VPN/Errors -> Technical Support",
+            "Login/Passwords/Access -> Access Control",
+            "Money/Invoices/Refunds -> Billing"
+        ]
     )
     
     _team_cache = team
     return team
 
 def extract_agent_tag(content: str):
-    match = re.search(r"\[\[(TECH|DATA|DOCS|MEMORY|TEAM)\]\]", content)
+    # Updated regex to capture the new PDF-aligned tags
+    match = re.search(r"\[\[(SUPPORT|ACCESS|BILLING|TEAM)\]\]", content)
     tag = "TEAM"
     cleaned = content
     if match:
@@ -228,7 +243,7 @@ def extract_agent_tag(content: str):
         cleaned = content.replace(match.group(0), "").strip()
     return tag, cleaned
 
-# --- 7. ENDPOINT ---
+# --- 8. ENDPOINT ---
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_handler(req: ChatRequest):
     if not AI_AVAILABLE: raise HTTPException(503, "AI Services Unavailable")
